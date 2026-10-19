@@ -14,3 +14,27 @@
 6. Проверьте `sudo ufw status`, `sudo fail2ban-client status sshd`, `sudo sshd -T`, `docker compose version`, `free -h`, `df -h`, `systemctl --failed`. Если существует `/var/run/reboot-required`, перезагрузите сервер и повторите проверку входа и служб.
 
 Скрипт не меняет root-пароль для консоли провайдера, не генерирует CI-ключи и не кладёт секреты в репозиторий. Не сохраняйте IP, пароли и приватные ключи в этих файлах. Для установки приложения используйте [основной README](../README.md#развёртывание-на-отдельном-vps): домен, production `.env` и подключение Meta настраиваются отдельно.
+
+## Ручной деплой
+
+GitHub хранит исходники, CI/CD не используется. На подготовленном VPS работайте пользователем `threads`. Первое получение кода в пустой каталог:
+
+```sh
+git clone https://github.com/MachinaIlucha/Mimiao-Threads.git /opt/threads-studio
+cd /opt/threads-studio
+```
+
+Для приватного репозитория отдельно настройте доступ к GitHub; не вставляйте токен в URL. Production `.env` передаётся отдельно по SSH, с правами `600`. Первый запуск и подключение сервисов описаны в основном README.
+
+Обновление уже настроенного приложения выполняется вручную:
+
+```sh
+cd /opt/threads-studio
+git pull --ff-only origin main
+docker compose build
+docker compose up -d
+docker compose ps
+docker compose logs --tail=80 api worker
+```
+
+API и worker выполняют миграции при запуске. Обновление может кратковременно прервать работу; автоматического отката нет. На VPS с 2 ГБ RAM сборка использует swap и может идти медленно. Не удаляйте volumes при обновлении.
