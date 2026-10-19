@@ -18,6 +18,29 @@ function respond(value: unknown) {
   vi.mocked(requestJson).mockResolvedValue({ choices: [{ message: { content: JSON.stringify(value) } }], usage: {} });
 }
 
+const planFormat=z.object({posts:z.array(z.object({text:z.string(),alternative:z.string(),category:z.enum(['teaching','life','founder','product']),sourceUrls:z.array(z.string().url())}))});
+
+it('sends enum and array requirements after the full voice instructions', async () => {
+  const plan={posts:[{text:'Що допомагає учням?',alternative:'Як ви це помічаєте?',category:'teaching',sourceUrls:[]}]};
+  respond(plan);
+  await expect(generate('daily-plan','Write Ukrainian prose.',{},planFormat)).resolves.toEqual(plan);
+  const body=JSON.parse(vi.mocked(requestJson).mock.calls[0][1]!.body as string);
+  const prompt=body.messages[0].content as string;
+  const contract=JSON.parse(prompt.split('\nJSON Schema:\n').at(-1)!);
+  expect(contract.properties.posts.items.properties.category.enum).toEqual(['teaching','life','founder','product']);
+  expect(contract.properties.posts.items.properties.sourceUrls.type).toBe('array');
+  expect(prompt.indexOf('Response format contract:')).toBeGreaterThan(prompt.indexOf(CLIENT_VOICE));
+});
+
+it.each([
+  {category:'навчання',sourceUrls:[]},
+  {category:'teaching',sourceUrls:null},
+])('rejects malformed provider fields instead of silently coercing them: %j', async fields => {
+  respond({posts:[{text:'Що допомагає учням?',alternative:'Як ви це помічаєте?',...fields}]});
+  await expect(generate('daily-plan','Write Ukrainian prose.',{},planFormat)).rejects.toMatchObject({code:'GENERATION_INVALID'});
+  expect(rows).toHaveBeenCalledOnce();
+});
+
 it.each(['daily-plan', 'variant', 'evergreen', 'reply'])('sends the client voice to DeepSeek for %s', async kind => {
   respond({ text: 'Як ви помічаєте прогрес учнів?', draft: 'Дякую, що поділилися.' });
   await generate(kind, 'Return JSON. Apply supplied voice.', { voice: 'Особисте уточнення' }, z.object({ text: z.string(), draft: z.string() }));

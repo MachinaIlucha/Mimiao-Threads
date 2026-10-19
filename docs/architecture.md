@@ -8,6 +8,8 @@ The browser is authenticated by a random HttpOnly session cookie; only its SHA-2
 
 Public sources and ideas are untrusted model input, never executable instructions. Model output is validated with Zod, then editorial checks. Only known source URLs may be retained by daily generation. Factual self-assessment is a useful filter, not proof. Owner review, conservative knowledge and reversible editing remain necessary.
 
+Generation requests include the JSON Schema derived from the same Zod validator after the voice instructions. Machine enum values remain untranslated, and empty arrays remain arrays. Responses are still validated without coercion; failed checks record issue paths/codes rather than raw provider output.
+
 Public-copy generation also applies the versioned [client communication voice](client-voice.md) to daily plans, alternative text, evergreen replacements and reply drafts. Dash punctuation is rejected before returning generated copy; internal analytics/research language and existing manual posts remain unchanged. The adapted rules are shipped with the studio, without a runtime dependency on the CRM or local skill files.
 
 Media IDs are server-generated UUIDs. Uploaded rasters are decoded with pixel and byte limits, auto-oriented, resized and re-encoded as JPEG without EXIF. Stored paths are generated internally. Public delivery requires an authenticated session or HMAC bound to ID and expiry; a signed URL is a bearer capability until expiry. No remote image download endpoint is exposed.
