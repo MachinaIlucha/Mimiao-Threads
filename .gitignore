@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+data/
+backups/
+coverage/
+test-results/
+*.log
+*.tsbuildinfo
+OWNER-LOGIN.local.txt

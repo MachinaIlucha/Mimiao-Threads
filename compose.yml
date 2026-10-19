@@ -1,0 +1,66 @@
+name: mimiao-threads-studio
+x-app: &app
+  build: .
+  image: mimiao-threads-studio:local
+  restart: unless-stopped
+  init: true
+  env_file: .env
+  environment:
+    DATABASE_URL: postgresql://studio:${POSTGRES_PASSWORD}@db:5432/studio
+    NODE_ENV: production
+    HOST: 0.0.0.0
+    PORT: 4319
+    MEDIA_DIR: /app/data/media
+  volumes:
+    - media:/app/data/media
+  depends_on:
+    db:
+      condition: service_healthy
+  security_opt: ["no-new-privileges:true"]
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: studio
+      POSTGRES_USER: studio
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes: ["database:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U studio -d studio"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+  api:
+    <<: *app
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4319/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+  worker:
+    <<: *app
+    command: ["npm","run","worker"]
+    healthcheck:
+      test: ["CMD", "node", "--import", "tsx", "scripts/worker-health.ts"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports: ["80:80","443:443","443:443/udp"]
+    environment:
+      STUDIO_DOMAIN: ${STUDIO_DOMAIN:?Set STUDIO_DOMAIN in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+volumes:
+  database:
+  media:
+  caddy_data:
+  caddy_config:

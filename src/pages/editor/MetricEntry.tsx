@@ -1,0 +1,7 @@
+import { useState } from 'react';
+import { useAction } from '../../api';
+import { ErrorMessage } from '../../components';
+export function MetricEntry({postId}:{postId:string}){
+ const [values,setValues]=useState({follows:'',profile_visits:'',views:''}),[checkpoint,setCheckpoint]=useState('manual');const action=useAction();
+ return <details className="metric-entry"><summary>Добавить показатели из интерфейса Threads</summary><p className="hint">Подписки и переходы с конкретного поста не доступны через API. Пустое поле означает «нет данных», 0 — измеренный ноль.</p><label>Контрольная точка<select value={checkpoint} onChange={e=>setCheckpoint(e.target.value)}>{['manual','24h','72h','7d'].map(v=><option key={v}>{v}</option>)}</select></label><div className="field-grid">{Object.entries({follows:'Подписки',profile_visits:'Переходы в профиль',views:'Просмотры'}).map(([key,label])=><label key={key}>{label}<input type="number" min="0" value={values[key as keyof typeof values]} onChange={e=>setValues(v=>({...v,[key]:e.target.value}))}/></label>)}</div><button disabled={action.isPending} onClick={()=>action.mutate({path:`/posts/${postId}/metrics`,body:{checkpoint,...Object.fromEntries(Object.entries(values).map(([k,v])=>[k,v===''?null:Number(v)]))}})}>Сохранить замер</button><ErrorMessage error={action.error}/>{action.isSuccess&&<p className="success-note">Ручной замер сохранён с текущим временем.</p>}</details>;
+}

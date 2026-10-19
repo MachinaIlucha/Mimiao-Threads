@@ -1,0 +1,21 @@
+:root {
+  color-scheme: dark;
+  font-family: 'Manrope Variable', Manrope, sans-serif;
+  font-synthesis: none;
+  font-size: 14px;
+  color: var(--text);
+  background: var(--bg);
+  --bg: #0e0c0a;
+  --panel: #181512;
+  --elevated: #221d17;
+  --text: #f2eadf;
+  --muted: #b4a694;
+  --amber: #e6aa56;
+  --line: #ffffff12;
+  --line-strong: #ffffff24;
+  --soft: #e6aa5610;
+  --success: #97d6af;
+  --danger: #f5a3a3;
+  --radius: 18px;
+  --shadow: 0 20px 65px #00000024;
+}

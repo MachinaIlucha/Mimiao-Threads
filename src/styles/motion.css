@@ -1,0 +1,20 @@
+.ambient { position: absolute; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; --px: 70%; --py: 30%; }
+.ambient-glow { position: absolute; inset: -20%; background: radial-gradient(ellipse at var(--px) var(--py), #c5802426, transparent 45%); animation: breathe 10s ease-in-out infinite alternate; }
+.ambient-grid { position: absolute; inset: 0; background-image: radial-gradient(#dfb77720 .7px, transparent .7px); background-size: 6px 6px; opacity: .2; mask-image: linear-gradient(100deg, transparent, #000); }
+.light-thread { position: absolute; width: 100%; height: 100%; opacity: .33; filter: drop-shadow(0 0 7px #dd8b2480); }
+.light-thread path { fill: none; stroke: #d99844; stroke-width: .8; }
+.light-thread .thread-tracer { stroke: #ffe4b4; stroke-width: 1.5; stroke-dasharray: 65 1200; animation: thread-flow 14s linear infinite; }
+.ambient>i { position: absolute; width: 2px; height: 2px; border-radius: 50%; background: #ffd399; box-shadow: 0 0 9px #e6aa5688; opacity: .4; animation: float 8s ease-in-out infinite alternate; }
+.ambient[data-running="false"] * { animation-play-state: paused !important; }
+.login-ambient .ambient-glow { background: radial-gradient(ellipse at var(--px) var(--py), #b6752b44, transparent 60%); }
+.login-ambient .light-thread { opacity: .55; transform: rotate(-15deg) scale(1.2); }
+.primary:after { content: ''; position: absolute; inset: -50% auto -50% -50%; width: 35%; background: linear-gradient(90deg,transparent,#fff5,transparent); transform: skewX(-20deg); pointer-events: none; }
+.primary:hover:after { animation: button-shine .65s ease-out; }
+@keyframes button-shine { to { left: 120%; } }
+@keyframes thread-flow { to { stroke-dashoffset: -1265; } }
+@keyframes float { to { transform: translate3d(12px,-24px,0); opacity: .8; } }
+@keyframes breathe { to { transform: scale(1.12) translate3d(-2%,3%,0); opacity: .65; } }
+@keyframes shimmer { to { background-position: -150% 0; } }
+@keyframes spin { to { transform: rotate(360deg); } }
+html[data-motion="calm"] *,html[data-motion="calm"] *:before,html[data-motion="calm"] *:after { animation: none !important; transition-duration: 0s !important; scroll-behavior: auto !important; }
+@media(prefers-reduced-motion:reduce) { *,*:before,*:after { animation: none !important; transition-duration: 0s !important; scroll-behavior: auto !important; } }

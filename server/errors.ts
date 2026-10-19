@@ -1,0 +1,3 @@
+export class AppError extends Error { constructor(public statusCode: number, message: string, public code='REQUEST_FAILED') { super(message); } }
+export class ProviderError extends Error { constructor(public status: number, public operation: string, public uncertain = false, public providerCode?: string) { super(`${operation}: provider request ${uncertain ? 'has an unknown outcome' : 'failed'} (${status || 'network'}).`); } }
+export function safeMessage(error: unknown) { return error instanceof AppError || error instanceof ProviderError ? error.message : 'Внутренняя ошибка. Подробности доступны в журнале сервера без секретных данных.'; }

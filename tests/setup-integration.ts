@@ -1,0 +1,10 @@
+import 'dotenv/config';
+import pg from 'pg';
+import { scryptSync } from 'node:crypto';
+const original=new URL(process.env.DATABASE_URL!);const admin=new pg.Client({connectionString:original.toString()});await admin.connect();
+if(!(await admin.query("SELECT 1 FROM pg_database WHERE datname='studio_test'")).rowCount)await admin.query('CREATE DATABASE studio_test');await admin.end();
+original.pathname='/studio_test';process.env.DATABASE_URL=original.toString();
+process.env.ADMIN_PASSWORD_HASH=`test-salt:${scryptSync('integration-password','test-salt',64).toString('hex')}`;
+process.env.ENCRYPTION_KEY='a'.repeat(64);process.env.SESSION_SECRET='b'.repeat(64);
+process.env.LIVE_PUBLISHING='true';process.env.PUBLIC_URL='https://studio.example.test';
+process.env.NODE_ENV='test';process.env.MEDIA_DIR='test-results/media';

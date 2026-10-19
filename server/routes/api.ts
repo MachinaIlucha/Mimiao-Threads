@@ -1,0 +1,40 @@
+import type { FastifyInstance } from 'fastify';
+import { z } from 'zod';
+import { sql,rows,one } from '../db.js';
+import { settings,event } from '../services/state.js';
+import { savePost } from '../services/posts.js';
+import { analyticsData } from '../services/analytics.js';
+import { draftReply,sendReply } from '../services/discussions.js';
+import { generate } from '../providers/deepseek.js';
+import { enqueue,jobNames } from '../jobs.js';
+import { AppError } from '../errors.js';
+import { checkText } from '../domain/editorial.js';
+import { resolvePublication } from '../services/resolution.js';
+const idOf=(params:unknown)=>z.object({id:z.string().uuid()}).parse(params).id;
+const settingsSchema=z.object({paused:z.boolean(),model:z.string().regex(/^deepseek-[a-z0-9-]+$/),timezone:z.literal('Europe/Kyiv'),keywords:z.array(z.string().min(1).max(128)).max(30),profiles:z.array(z.string().regex(/^[\w.]{1,50}$/)).max(50),knowledge:z.string().max(30000),voice:z.string().max(10000),forbidden:z.array(z.string().min(1).max(300)).max(100),preferred:z.array(z.string().max(300)).max(100),dailyCount:z.number().int().min(5).max(8),adaptive:z.boolean(),researchEnabled:z.boolean()});
+function csvCell(value:unknown){const str=value===null||value===undefined?'':String(value);return '"'+(/^[=+\-@\t\r]/.test(str)?"'":'')+str.replaceAll('"','""')+'"';}
+export async function apiRoutes(app:FastifyInstance){
+ app.get('/api/settings',settings);
+ app.put('/api/settings',async req=>{const input=settingsSchema.parse(req.body);await rows(sql`UPDATE settings SET value=value||${JSON.stringify(input)}::jsonb,updated_at=now() WHERE id=1`);await event('settings','success','Настройки сохранены');return settings();});
+ app.post('/api/pause',async req=>{const {paused}=z.object({paused:z.boolean()}).parse(req.body);await rows(sql`UPDATE settings SET value=jsonb_set(value,'{paused}',${JSON.stringify(paused)}::jsonb) WHERE id=1`);await event('publishing',paused?'warning':'success',paused?'Автопубликация на паузе':'Автопубликация включена');return settings();});
+ app.get('/api/posts',()=>rows(sql`SELECT * FROM posts ORDER BY COALESCE(scheduled_at,published_at,created_at) DESC LIMIT 1000`));
+ app.post('/api/posts',req=>savePost(req.body));
+ app.put('/api/posts/:id',req=>savePost(req.body,idOf(req.params)));
+ app.post('/api/posts/:id/resolve',req=>resolvePublication(idOf(req.params),z.object({providerId:z.string().regex(/^\d+$/)}).parse(req.body).providerId));
+ app.get('/api/posts/:id/history',async req=>({revisions:await rows(sql`SELECT * FROM revisions WHERE post_id=${idOf(req.params)}::uuid ORDER BY revision DESC`),attempts:await rows(sql`SELECT * FROM publish_attempts WHERE post_id=${idOf(req.params)}::uuid ORDER BY started_at DESC`)}));
+ app.post('/api/posts/:id/variant',async req=>{const p=await one(sql`SELECT * FROM posts WHERE id=${idOf(req.params)}::uuid`);if(!p)throw new AppError(404,'Пост не найден');const s=await settings();const result=await generate('variant','Return JSON {text:string}. Rewrite this post in Ukrainian with a different hook, preserve verified facts and sources. Do not invent experiences. Max500characters.',{post:p,voice:s.voice,knowledge:s.knowledge},z.object({text:z.string().max(500)}));const errors=checkText(result.text,s,[]);if(errors.length)throw new AppError(502,errors.join('. '));return result;});
+ app.post('/api/jobs/:name',req=>enqueue(z.object({name:z.enum(jobNames)}).parse(req.params).name));
+ app.get('/api/ideas',()=>rows(sql`SELECT * FROM ideas ORDER BY created_at DESC LIMIT 500`));
+ app.post('/api/ideas',async req=>{const p=z.object({text:z.string().min(1).max(10000),source_url:z.string().url().nullable().default(null)}).parse(req.body);return one(sql`INSERT INTO ideas(text,source_url) VALUES(${p.text},${p.source_url}) RETURNING *`);});
+ app.patch('/api/ideas/:id',async req=>{const p=z.object({state:z.enum(['saved','use','dismissed']),note:z.string().max(2000).default('')}).parse(req.body);return one(sql`UPDATE ideas SET state=${p.state},note=${p.note},updated_at=now() WHERE id=${idOf(req.params)}::uuid RETURNING *`);});
+ app.get('/api/trends',()=>rows(sql`SELECT * FROM trends ORDER BY created_at DESC,score DESC LIMIT 100`));
+ app.patch('/api/trends/:id',async req=>{const p=z.object({state:z.enum(['new','use','later','dismissed'])}).parse(req.body);return one(sql`UPDATE trends SET state=${p.state} WHERE id=${idOf(req.params)}::uuid RETURNING *`);});
+ app.get('/api/analytics',analyticsData);
+ app.post('/api/posts/:id/metrics',async req=>{const p=z.object({follows:z.number().int().min(0).nullable(),profile_visits:z.number().int().min(0).nullable(),views:z.number().int().min(0).nullable(),checkpoint:z.enum(['24h','72h','7d','manual'])}).parse(req.body);const post=await one(sql`SELECT published_at FROM posts WHERE id=${idOf(req.params)}::uuid AND status='published'`);if(!post)throw new AppError(400,'Нужен опубликованный пост');const age=(Date.now()-Date.parse(post.published_at))/3600000;return one(sql`INSERT INTO metrics(post_id,checkpoint,source,age_hours,follows,profile_visits,views) VALUES(${idOf(req.params)}::uuid,${p.checkpoint},'manual',${age},${p.follows},${p.profile_visits},${p.views}) ON CONFLICT(post_id,checkpoint,source) DO UPDATE SET follows=EXCLUDED.follows,profile_visits=EXCLUDED.profile_visits,views=EXCLUDED.views,age_hours=EXCLUDED.age_hours,measured_at=now() RETURNING *`);});
+ app.get('/api/export.csv',async(_req,res)=>{const data=await rows(sql`SELECT p.text,p.published_at,p.permalink,m.checkpoint,m.source,m.age_hours,m.views,m.likes,m.replies,m.follows,m.profile_visits FROM posts p LEFT JOIN metrics m ON m.post_id=p.id WHERE p.status='published' ORDER BY p.published_at DESC`);const fields=['text','published_at','permalink','checkpoint','source','age_hours','views','likes','replies','follows','profile_visits'];res.type('text/csv; charset=utf-8').header('Content-Disposition','attachment; filename="threads-metrics.csv"');return '\uFEFF'+[fields.map(csvCell).join(','),...data.map(r=>fields.map(f=>csvCell(r[f])).join(','))].join('\r\n');});
+ app.get('/api/replies',()=>rows(sql`SELECT * FROM replies ORDER BY created_at DESC LIMIT 500`));
+ app.post('/api/replies/:id/draft',req=>draftReply(idOf(req.params)));
+ app.patch('/api/replies/:id',async req=>{const p=z.object({draft:z.string().max(500),meaningful:z.boolean(),classification:z.enum(['unclassified','question','experience','discussion','spam','other'])}).parse(req.body);const r=await one(sql`UPDATE replies SET draft=${p.draft},meaningful=${p.meaningful},classification=${p.classification},manual=true,state='draft' WHERE id=${idOf(req.params)}::uuid AND state NOT IN ('sending','sent','unknown') RETURNING *`);if(!r)throw new AppError(409,'Ответ недоступен для редактирования');return r;});
+ app.post('/api/replies/:id/send',req=>sendReply(idOf(req.params)));
+ app.get('/api/operations',async()=>({events:await rows(sql`SELECT * FROM operations ORDER BY created_at DESC LIMIT 200`),heartbeats:await rows(sql`SELECT * FROM heartbeats ORDER BY name`),plans:await rows(sql`SELECT * FROM daily_plans ORDER BY day DESC LIMIT 14`),usage:await rows(sql`SELECT kind,model,sum(input_tokens)::bigint AS input_tokens,sum(output_tokens)::bigint AS output_tokens,sum(cached_tokens)::bigint AS cached_tokens,count(*)::int AS requests FROM generation_runs WHERE created_at>now()-interval '30 days' GROUP BY kind,model`)}));
+}

@@ -1,0 +1,10 @@
+node_modules
+dist
+.git
+.env*
+OWNER-LOGIN.local.txt
+data
+backups
+test-results
+coverage
+*.log

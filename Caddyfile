@@ -1,0 +1,5 @@
+{$STUDIO_DOMAIN} {
+ encode zstd gzip
+ reverse_proxy api:4319
+ header Strict-Transport-Security "max-age=31536000"
+}
