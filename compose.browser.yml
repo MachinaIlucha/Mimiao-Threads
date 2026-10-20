@@ -1,0 +1,25 @@
+# Opt-in overlay: docker compose -f compose.yml -f compose.browser.yml up -d --build
+# Never expose 6080/5900 or a debugging port publicly.
+services:
+  api:
+    environment:
+      PUBLISHING_MODE: browser
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.browser
+    image: mimiao-threads-browser:local
+    command: ["/app/deploy/browser-entrypoint.sh"]
+    environment:
+      PUBLISHING_MODE: browser
+      BROWSER_HEADLESS: "false"
+      BROWSER_PROFILE_DIR: /app/data/threads-browser
+      BROWSER_DESKTOP_PASSWORD: ${BROWSER_DESKTOP_PASSWORD:?Set a separate desktop password}
+    volumes:
+      - browser_profile:/app/data/threads-browser
+    ports: ["127.0.0.1:6080:6080"]
+    shm_size: 256mb
+    mem_limit: 1200m
+    stop_grace_period: 90s
+volumes:
+  browser_profile:

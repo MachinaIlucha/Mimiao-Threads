@@ -6,6 +6,7 @@ export interface Settings {
  dailyCount: number; adaptive: boolean; startedAt: string; researchEnabled: boolean;
 }
 export interface Post {
+ publication_method?: 'api'|'browser';
  id: string; text: string; alternative: string; category: Category; status: PostStatus; scheduled_at: string | null;
  published_at: string | null; created_at: string; updated_at: string; revision: number; media_ids: string[];
  sources: string[]; topic: string; reason: string; error: string | null; provider_id: string | null;

@@ -16,6 +16,8 @@ Media IDs are server-generated UUIDs. Uploaded rasters are decoded with pixel an
 
 ## Publication invariants
 
+The default transport is Meta's official API. An optional [browser transport](browser-publishing.md) runs in the worker with a separate persistent Chromium profile and SSH-only desktop access. Each attempt stores its transport; browser results store a permalink without fabricating an API ID. Both transports share the claim/lock and pause boundary. Unknown/publishing records block the entire queue. Browser errors additionally engage the global pause.
+
 1. All schedule calculations use IANA `Europe/Kyiv`. UTC is stored in PostgreSQL. Slots are spaced at least90minutes; automated counts are5–8, daytime only.
 2. A day has one plan row, and a post has a unique `(plan_day,slot)`. Plan generation is claimed atomically; insertion is one transaction. Failed generations cannot leave partial plans. Owner revisions are not replaced by rerunning the day.
 3. Every edit has an expected revision. Scheduling takes a transaction advisory lock to prevent competing reservations. Published, publishing and unknown posts cannot be edited.

@@ -38,3 +38,5 @@ docker compose logs --tail=80 api worker
 ```
 
 API и worker выполняют миграции при запуске. Обновление может кратковременно прервать работу; автоматического отката нет. На VPS с 2 ГБ RAM сборка использует swap и может идти медленно. Не удаляйте volumes при обновлении.
+
+Для публикации без приложения Meta используйте [браузерный режим](../docs/browser-publishing.md): `docker compose -f compose.yml -f compose.browser.yml ...`. Чтобы обычный `docker compose` и алиас `dc` тоже сохраняли этот режим, на Linux задайте в серверном `.env` `COMPOSE_FILE=compose.yml:compose.browser.yml`. Браузер доступен по SSH-туннелю; порт 6080 не открывайте в firewall.

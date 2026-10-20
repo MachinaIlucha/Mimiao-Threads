@@ -11,9 +11,13 @@ export const config = {
  apiVersion: process.env.THREADS_API_VERSION || 'v1.0',
  mediaDir: path.resolve(process.env.MEDIA_DIR || 'data/media'),
  livePublishing: process.env.LIVE_PUBLISHING === 'true',
+ publishingMode: process.env.PUBLISHING_MODE || 'api',
+ browserProfileDir: path.resolve(process.env.BROWSER_PROFILE_DIR || 'data/threads-browser'),
+ browserHeadless: process.env.BROWSER_HEADLESS === 'true',
  publicDiscoveryApproved: process.env.THREADS_PUBLIC_DISCOVERY_APPROVED === 'true'
 };
 export function validateConfig() {
+ if (!['api','browser'].includes(config.publishingMode)) throw new Error('PUBLISHING_MODE must be api or browser.');
  if (!/^[a-f0-9]{64}$/i.test(config.encryptionKey) || config.sessionSecret.length < 32 || !config.passwordHash)
   throw new Error('Run npm run setup to create local secrets and the owner password.');
  if (config.production && !config.publicUrl.startsWith('https://')) throw new Error('Production PUBLIC_URL must use HTTPS.');

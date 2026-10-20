@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import sharp from 'sharp';
 vi.mock('../server/providers/threads',()=>({connection:vi.fn(async()=>({username:'mimiao.crm'})),threads:vi.fn(),paged:vi.fn(async()=>[]),mediaFields:'id,text',refreshToken:vi.fn()}));
 vi.mock('../server/providers/deepseek',()=>({generate:vi.fn(),search:vi.fn(async()=>[])}));
+vi.mock('../server/browser/publisher',()=>({publishInBrowser:vi.fn(),reconcileBrowser:vi.fn(),browserPublishError:vi.fn()}));
 import { pool,sql,rows,one } from '../server/db';
 import { migrate } from '../server/migrate';
 import { defaults } from '../server/defaults';
@@ -16,10 +17,12 @@ import { threads,paged } from '../server/providers/threads';
 import { generate } from '../server/providers/deepseek';
 import { ProviderError } from '../server/errors';
 import { config } from '../server/config';
+import { publishInBrowser,reconcileBrowser } from '../server/browser/publisher';
+import { connection } from '../server/providers/threads';
 const texts=['Що допомагає вам пояснити складну тему простими словами?','Чи є у вас улюблений спосіб почати перше заняття з новою групою?','Як ви домовляєтесь про перенесення уроків без зайвого листування?','Яка маленька перемога учня запам’яталася вам цього тижня?','Що ви змінили б у своєму робочому розкладі, якби починали спочатку?'];
 let app:Awaited<ReturnType<typeof createApp>>;
 beforeAll(async()=>{expect(new URL(config.databaseUrl).pathname).toBe('/studio_test');await migrate();app=await createApp();await app.ready();});
-beforeEach(async()=>{vi.clearAllMocks();await pool.query('TRUNCATE posts,revisions,publish_attempts,media,metrics,account_metrics,replies,operations,daily_plans,generation_runs,trends,ideas,experiments,reports,sessions,connections CASCADE');await rows(sql`UPDATE settings SET value=${JSON.stringify({...defaults,paused:false})}::jsonb WHERE id=1`);config.livePublishing=true;});
+beforeEach(async()=>{vi.clearAllMocks();vi.mocked(connection).mockResolvedValue({username:'mimiao.crm'});config.publishingMode='api';await pool.query('TRUNCATE posts,revisions,publish_attempts,media,metrics,account_metrics,replies,operations,daily_plans,generation_runs,trends,ideas,experiments,reports,sessions,connections,browser_status CASCADE');await rows(sql`UPDATE settings SET value=${JSON.stringify({...defaults,paused:false})}::jsonb WHERE id=1`);config.livePublishing=true;});
 afterAll(async()=>{await app.close();await pool.end();});
 async function due(media:string[]=[]){return one(sql`INSERT INTO posts(text,status,scheduled_at,media_ids) VALUES(${texts[0]},'scheduled',now()-interval '1 minute',${JSON.stringify(media)}::jsonb) RETURNING *`);}
 async function login(){const r=await app.inject({method:'POST',url:'/api/auth/login',headers:{origin:config.publicUrl},payload:{password:'integration-password'}});expect(r.statusCode).toBe(200);return{cookie:r.headers['set-cookie']!.toString().split(';')[0],origin:config.publicUrl,'x-csrf-token':r.json().csrf};}
@@ -45,4 +48,45 @@ describe('publication safety',()=>{
 describe('metrics and replies',()=>{
  it('labels imported history and preserves missing metrics',async()=>{const p=await one(sql`INSERT INTO posts(text,status,provider_id,published_at) VALUES('old','published','old-id',now()-interval '20 days') RETURNING id`);vi.mocked(threads).mockResolvedValue({data:[{name:'views',values:[{value:0}]}]});await collectMetrics();const metrics=await rows(sql`SELECT * FROM metrics WHERE post_id=${p!.id}::uuid`);expect(metrics).toHaveLength(1);expect(metrics[0]).toMatchObject({checkpoint:'import',views:0,likes:null,follows:null});});
  it('does not resend an ambiguous reply',async()=>{const r=await one(sql`INSERT INTO replies(provider_id,username,text,draft,state,created_at) VALUES('reply','person','Question',${texts[1]},'draft',now()) RETURNING id`);vi.mocked(threads).mockImplementation(async endpoint=>{if(endpoint==='me/threads_publish')throw new ProviderError(0,'publish',true);return endpoint==='me/threads'?{id:'container'}:{status:'FINISHED'};});await expect(sendReply(r!.id)).rejects.toThrow();await expect(sendReply(r!.id)).rejects.toMatchObject({statusCode:409});expect(vi.mocked(threads).mock.calls.filter(c=>c[0]==='me/threads_publish')).toHaveLength(1);});
+});
+describe('browser publishing transport',()=>{
+ it('publishes without API credentials and records a permalink instead of a fake API id',async()=>{
+  config.publishingMode='browser';vi.mocked(connection).mockResolvedValue(undefined);
+  const p=await due();
+  vi.mocked(publishInBrowser).mockImplementation(async(post,beforeSend)=>{
+   await beforeSend([],new Date().toISOString());
+   const attempt=await one(sql`SELECT * FROM publish_attempts WHERE post_id=${post.id}::uuid`);
+   expect(attempt).toMatchObject({phase:'sending',transport:'browser',browser_baseline:[]});
+   return {url:'https://www.threads.com/@mimiao.crm/post/abc',timestamp:new Date().toISOString(),text:post.text,images:0};
+  });
+  await publishDue();
+  expect((await one(sql`SELECT * FROM posts WHERE id=${p!.id}::uuid`))).toMatchObject({status:'published',publication_method:'browser',provider_id:null,permalink:'https://www.threads.com/@mimiao.crm/post/abc'});
+  expect(threads).not.toHaveBeenCalled();
+ });
+ it('rechecks pause before the browser click and pauses on preflight failure',async()=>{
+  config.publishingMode='browser';await due();
+  vi.mocked(publishInBrowser).mockImplementation(async(_post,beforeSend)=>{
+   await rows(sql`UPDATE settings SET value=jsonb_set(value,'{paused}','true')`);
+   await beforeSend([],new Date().toISOString());throw new Error('unreachable');
+  });
+  await publishDue();
+  expect((await one(sql`SELECT status FROM posts`))!.status).toBe('blocked');
+  expect((await one(sql`SELECT phase FROM publish_attempts`))!.phase).toBe('failed');
+ });
+ it('never retries an uncertain browser click, blocks the queue, and reconciles read-only',async()=>{
+  config.publishingMode='browser';const p=await due();
+  vi.mocked(publishInBrowser).mockImplementation(async(_post,beforeSend)=>{await beforeSend([],new Date().toISOString());throw new Error('browser closed after click');});
+  await publishDue();
+  expect((await one(sql`SELECT status FROM posts WHERE id=${p!.id}::uuid`))!.status).toBe('unknown');
+  expect((await one(sql`SELECT value FROM settings`))!.value.paused).toBe(true);
+  await rows(sql`UPDATE settings SET value=jsonb_set(value,'{paused}','false')`);await due();
+  await publishDue();expect(publishInBrowser).toHaveBeenCalledTimes(1);
+  vi.mocked(reconcileBrowser).mockResolvedValue({url:'https://www.threads.com/@mimiao.crm/post/abc',timestamp:new Date().toISOString(),text:p!.text,images:0});
+  await reconcile();expect(reconcileBrowser).toHaveBeenCalledTimes(1);
+  expect((await one(sql`SELECT status FROM posts WHERE id=${p!.id}::uuid`))!.status).toBe('published');
+  expect(threads).not.toHaveBeenCalled();
+ });
+ it('never launches a browser for a disabled publisher',async()=>{
+  config.publishingMode='browser';config.livePublishing=false;await due();await publishDue();expect(publishInBrowser).not.toHaveBeenCalled();
+ });
 });

@@ -359,7 +359,13 @@ export function Editor({
                 </small>
               </label>
             )}
-            {post?.status === "unknown" && (
+            {post?.status === "unknown" && post.publication_method==='browser' && (
+              <div className="rationale">
+                <p>Проверьте профиль @mimiao.crm: пост мог уже появиться. Очередь остановлена, повторная отправка запрещена. Сверка ищет новый пост с тем же текстом и временем.</p>
+                <button disabled={action.isPending} onClick={()=>action.mutate({path:'/jobs/reconcile'})}>Сверить с браузером</button>
+              </div>
+            )}
+            {post?.status === "unknown" && post.publication_method!=='browser' && (
               <div className="rationale">
                 <p>
                   Если пост уже появился в Threads, укажите его числовой API ID.

@@ -8,6 +8,7 @@ import { requestJson } from '../providers/http.js';
 import { connection, threads } from '../providers/threads.js';
 import { event } from '../services/state.js';
 import { enqueue } from '../jobs.js';
+import { browserStatus } from '../browser/session.js';
 const scopes=['threads_basic','threads_content_publish','threads_manage_insights','threads_read_replies','threads_keyword_search','threads_profile_discovery'];
 const redirectUri=()=>`${config.publicUrl}/api/integrations/threads/callback`;
 export async function checkCapabilities() {
@@ -22,7 +23,7 @@ export async function checkCapabilities() {
  await rows(sql`UPDATE connections SET capabilities=${JSON.stringify(caps)}::jsonb,checked_at=now() WHERE id=1`);return caps;
 }
 export async function integrationRoutes(app:FastifyInstance) {
- app.get('/api/integrations',async()=>({threads:await one(sql`SELECT username,user_id,expires_at,scopes,capabilities,checked_at FROM connections WHERE id=1`),deepseek:!!config.deepseekKey,metaConfigured:!!config.appId&&!!config.appSecret,livePublishing:config.livePublishing,publicUrl:config.publicUrl,redirectUri:redirectUri()}));
+ app.get('/api/integrations',async()=>({threads:await one(sql`SELECT username,user_id,expires_at,scopes,capabilities,checked_at FROM connections WHERE id=1`),deepseek:!!config.deepseekKey,metaConfigured:!!config.appId&&!!config.appSecret,livePublishing:config.livePublishing,publishingMode:config.publishingMode,browser:config.publishingMode==='browser'?await browserStatus():null,publicUrl:config.publicUrl,redirectUri:redirectUri()}));
  app.post('/api/integrations/threads/connect',async req=>{
   if(!config.appId||!config.appSecret)throw new AppError(409,'Укажите THREADS_APP_ID и THREADS_APP_SECRET в .env');
   const state=randomToken();await rows(sql`INSERT INTO oauth_attempts(state,session_id,expires_at) VALUES(${state},${req.studioSession!.id},now()+interval '10 minutes')`);

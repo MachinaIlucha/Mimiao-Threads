@@ -1,6 +1,6 @@
 import { PgBoss } from 'pg-boss';
 import { config } from './config.js';
-export const jobNames=['research','prepare','publish','reconcile','metrics','replies','refresh','history','review','optimize','evergreen'] as const;
+export const jobNames=['research','prepare','publish','reconcile','metrics','replies','refresh','history','review','optimize','evergreen','browser-check'] as const;
 export type JobName=typeof jobNames[number];
 export const boss=new PgBoss({connectionString:config.databaseUrl,application_name:'threads-studio'});
 boss.on('error',()=>{console.error('Job queue error; check database connectivity.');});
