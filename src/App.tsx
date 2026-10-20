@@ -176,6 +176,9 @@ function Studio() {
   }, [menu]);
   const { data: settings } = useData<Settings>("/settings");
   const integrations = useData("/integrations");
+  const threadsReady = integrations.data?.publishingMode === "browser"
+    ? integrations.data?.browser?.state === "ready"
+    : !!integrations.data?.threads;
   const action = useAction();
   function navigate(next: string) {
     setPage(next);
@@ -207,7 +210,7 @@ function Studio() {
             @mimiao.crm<small>Ваше пространство</small>
           </div>
           <span
-            className={`dot ${integrations.data?.threads ? "green" : ""}`}
+            className={`dot ${threadsReady ? "green" : ""}`}
           />
         </div>
         <nav aria-label="Разделы студии">
@@ -291,11 +294,12 @@ function Studio() {
         </div>
         <main id="main-content" tabIndex={-1} className="content">
           <ErrorMessage error={action.error} />
-          {(!integrations.data?.deepseek || !integrations.data?.threads) && (
+          {integrations.data && (!integrations.data.deepseek || !threadsReady) && (
             <div className="setup-strip">
               <span>
-                <Plug size={16} /> Студия готова к настройке. Подключите
-                DeepSeek и Threads для автоматической работы.
+                <Plug size={16} /> {integrations.data.publishingMode === "browser" && integrations.data.deepseek
+                  ? "Завершите вход в браузере Threads и проверьте подключение."
+                  : "Подключите DeepSeek и Threads для автоматической работы."}
               </span>
               <button onClick={() => navigate("connections")}>
                 Настроить →
