@@ -49,12 +49,17 @@ async function attachments(ids:string[]){
  }
  return files;
 }
+async function openOwnProfile(page:Page){
+ await page.goto(threadsProfile,{waitUntil:'domcontentloaded'});
+ await assertOwnAccount(page);
+ await page.getByRole('button',{name:/^Edit profile$|^Редактировать профиль$|^Редагувати профіль$/}).waitFor();
+ // This established account has posts. Do not mistake a loading feed for an empty baseline.
+ await page.locator('a[href*="/@mimiao.crm/post/"] time[datetime]').first().waitFor({timeout:30000});
+}
 export async function publishInBrowser(post:Post,beforeSend:(baseline:string[],sentAt:string)=>Promise<void>){
  const files=await attachments(post.media_ids);
  return withBrowser(async page=>{
-  await page.goto(threadsProfile,{waitUntil:'domcontentloaded'});
-  await assertOwnAccount(page);
-  await page.getByRole('button',{name:/^Edit profile$|^Редактировать профиль$|^Редагувати профіль$/}).waitFor();
+  await openOwnProfile(page);
   const before=await readProfilePosts(page);
   // Capture every visible permalink, including cards whose text structure has changed.
   const baseline=(await page.locator('a[href*="/@mimiao.crm/post/"]').evaluateAll(els=>els.map(e=>(e as HTMLAnchorElement).href))).map(postUrl).filter((x):x is string=>!!x);
@@ -83,9 +88,7 @@ export async function publishInBrowser(post:Post,beforeSend:(baseline:string[],s
   await beforeSend(baseline,sentAt); // Durable sending state BEFORE the only final click.
   await send.click({timeout:15000});
   await dialog.waitFor({state:'hidden',timeout:60000});
-  await page.goto(threadsProfile,{waitUntil:'domcontentloaded'});
-  await assertOwnAccount(page);
-  await page.getByRole('button',{name:/^Edit profile$|^Редактировать профиль$|^Редагувати профіль$/}).waitFor();
+  await openOwnProfile(page);
   const match=matchingPublication(await readProfilePosts(page),post.text,baseline,sentAt,files.length);
   if(!match)throw new AppError(409,'Отправка выполнена, но результат ещё не подтверждён. Повторная отправка заблокирована.');
   return match;
@@ -94,9 +97,7 @@ export async function publishInBrowser(post:Post,beforeSend:(baseline:string[],s
 export async function reconcileBrowser(post:Post,baseline:string[]|null,sentAt:string|null){
  if(!baseline||!sentAt)return null;
  return withBrowser(async page=>{
-  await page.goto(threadsProfile,{waitUntil:'domcontentloaded'});
-  await assertOwnAccount(page);
-  await page.getByRole('button',{name:/^Edit profile$|^Редактировать профиль$|^Редагувати профіль$/}).waitFor();
+  await openOwnProfile(page);
   return matchingPublication(await readProfilePosts(page),post.text,baseline,sentAt,post.media_ids.length);
  });
 }

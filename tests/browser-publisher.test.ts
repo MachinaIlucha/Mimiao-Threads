@@ -12,7 +12,7 @@ vi.mock('../server/browser/session',()=>({
  assertOwnAccount:fake.identity,setBrowserStatus:vi.fn(),
  withBrowser:async(fn:any)=>fn({
   goto:vi.fn(),evaluate:fake.evaluate,waitForFunction:fake.preview,
-  locator:()=>({evaluateAll:async()=>[]}),
+  locator:()=>({evaluateAll:async()=>[],first:()=>({waitFor:fake.wait})}),
   getByRole:(role:string,options?:{name:RegExp})=>role==='dialog'?{
    waitFor:fake.wait,getByText:()=>({waitFor:fake.wait}),locator:()=>fake.upload,
    getByRole:(r:string)=>r==='textbox'?fake.editor:fake.send
