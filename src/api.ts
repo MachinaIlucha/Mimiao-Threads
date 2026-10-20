@@ -2,7 +2,7 @@ import { useMutation,useQuery,useQueryClient } from '@tanstack/react-query';
 let csrf='';
 export function setCsrf(value:string){csrf=value;}
 export async function api<T=any>(path:string,method='GET',body?:unknown):Promise<T>{
- const form=body instanceof FormData;const response=await fetch(`/api${path}`,{method,credentials:'same-origin',headers:{...(form?{}:{'Content-Type':'application/json'}),...(method==='GET'?{}:{'X-CSRF-Token':csrf})},body:body===undefined?undefined:form?body:JSON.stringify(body)});
+ const form=body instanceof FormData;const response=await fetch(`/api${path}`,{method,credentials:'same-origin',headers:{...(body===undefined||form?{}:{'Content-Type':'application/json'}),...(method==='GET'?{}:{'X-CSRF-Token':csrf})},body:body===undefined?undefined:form?body:JSON.stringify(body)});
  const result=await response.json();if(!response.ok)throw new Error(result.message||'Ошибка запроса');return result;
 }
 export function useData<T=any>(path:string){return useQuery<T>({queryKey:[path],queryFn:()=>api<T>(path),refetchInterval:30000});}
