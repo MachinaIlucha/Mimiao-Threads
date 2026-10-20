@@ -37,6 +37,11 @@ export async function withBrowser<T>(task:(page:Page)=>Promise<T>):Promise<T>{
  busy=true;try{return await task(await browserPage());}finally{busy=false;}
 }
 export async function assertOwnAccount(p:Page){
+ const url=new URL(p.url());
+ if(url.protocol!=='https:'||!['www.threads.com','threads.com','www.threads.net','threads.net'].includes(url.hostname)){
+  await setBrowserStatus('login_required','Завершите вход и вернитесь на страницу Threads в браузере сервера.');
+  throw new AppError(409,'Браузер ожидает входа или проверки аккаунта на странице Threads.','BROWSER_LOGIN_REQUIRED');
+ }
  const profile=p.getByRole('link',{name:/^Profile(?: Profile)?$|^Профиль(?: Профиль)?$|^Профіль(?: Профіль)?$/}).first();
  const href=await profile.getAttribute('href',{timeout:12000}).catch(()=>null);
  if(href!==`/@${threadsUsername}`&&href!==`https://www.threads.com/@${threadsUsername}`){

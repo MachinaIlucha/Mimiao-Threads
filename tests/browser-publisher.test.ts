@@ -23,10 +23,17 @@ import {publishInBrowser} from '../server/browser/publisher';
 const post={text:'Текст для перевірки',media_ids:[]} as unknown as Post;
 beforeEach(()=>{
  vi.resetAllMocks();fake.editor.count.mockResolvedValue(1);fake.editor.innerText.mockResolvedValue(post.text);
- fake.send.isEnabled.mockResolvedValue(true);fake.evaluate.mockResolvedValue([]);
+ fake.send.isEnabled.mockResolvedValue(true);fake.evaluate.mockResolvedValue([{url:'https://www.threads.com/@mimiao.crm/post/old',text:'Попередній допис',timestamp:'2025-01-01T00:00:00Z',images:0}]);
  fake.one.mockResolvedValue({storage_name:'photo.jpg'});fake.stat.mockResolvedValue({isFile:()=>true});
 });
 describe('browser composer preflight and sending boundary',()=>{
+ it('does not send if the known profile cannot be parsed or already contains the text',async()=>{
+  fake.evaluate.mockResolvedValue([]);
+  await expect(publishInBrowser(post,vi.fn())).rejects.toThrow('карточки');
+  fake.evaluate.mockResolvedValue([{text:post.text}]);
+  await expect(publishInBrowser(post,vi.fn())).rejects.toThrow('уже виден');
+  expect(fake.send.click).not.toHaveBeenCalled();
+ });
  it('does not open the composer when the identity check fails',async()=>{
   fake.identity.mockRejectedValue(new Error('login required'));
   await expect(publishInBrowser(post,vi.fn())).rejects.toThrow();

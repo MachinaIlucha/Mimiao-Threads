@@ -61,6 +61,7 @@ export async function publishInBrowser(post:Post,beforeSend:(baseline:string[],s
  return withBrowser(async page=>{
   await openOwnProfile(page);
   const before=await readProfilePosts(page);
+  if(!before.some(p=>p.text.trim()))throw new AppError(409,'Не удалось прочитать карточки профиля. Публикация остановлена до проверки интерфейса Threads.');
   // Capture every visible permalink, including cards whose text structure has changed.
   const baseline=(await page.locator('a[href*="/@mimiao.crm/post/"]').evaluateAll(els=>els.map(e=>(e as HTMLAnchorElement).href))).map(postUrl).filter((x):x is string=>!!x);
   if(before.some(p=>p.text.replace(/\s+/gu,' ').trim()===post.text.replace(/\s+/gu,' ').trim()))throw new AppError(409,'Такой текст уже виден в профиле. Проверьте, не опубликован ли пост вручную.');
