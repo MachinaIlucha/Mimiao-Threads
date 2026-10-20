@@ -1,0 +1,46 @@
+# Use with compose.yml, NOT compose.browser.yml.
+services:
+  api:
+    environment:
+      PUBLISHING_MODE: browser
+      BROWSER_ENGINE: camoufox
+      CAMOUFOX_STUDIO_KEY: ${CAMOUFOX_STUDIO_KEY:?Set a private worker key}
+  worker:
+    environment:
+      PUBLISHING_MODE: browser
+      BROWSER_ENGINE: camoufox
+      CAMOUFOX_URL: http://camoufox:8000
+      CAMOUFOX_STUDIO_KEY: ${CAMOUFOX_STUDIO_KEY:?Set a private worker key}
+    depends_on:
+      camoufox:
+        condition: service_healthy
+    stop_grace_period: 100s
+  camoufox:
+    build:
+      context: .
+      dockerfile: Dockerfile.camoufox
+    image: mimiao-threads-camoufox:local
+    restart: unless-stopped
+    init: true
+    environment:
+      CPM_API_KEY: ${CAMOUFOX_STUDIO_KEY:?Set a private worker key}
+      CAMOUFOX_STUDIO_KEY: ${CAMOUFOX_STUDIO_KEY}
+      CPM_OWNER_PASSWORD: ${CAMOUFOX_OWNER_PASSWORD:?Set a separate panel password}
+      CPM_SECRET_KEY: ${CAMOUFOX_SECRET_KEY:?Set a profile encryption key}
+      BROWSER_DESKTOP_PASSWORD: ${BROWSER_DESKTOP_PASSWORD:?Set a separate desktop password}
+    volumes:
+      - camoufox_profiles:/data
+      - media:/app/data/media:ro
+    ports: ["127.0.0.1:6080:6080", "127.0.0.1:8000:8000"]
+    shm_size: 256mb
+    mem_limit: 1100m
+    stop_grace_period: 100s
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 45s
+volumes:
+  camoufox_profiles:

@@ -1,6 +1,53 @@
 # Browser publication mode
 
-The optional browser worker uses the ordinary Threads website, without a Meta developer app. The owner signs in to **mimiao.crm** manually; cookies live in a dedicated persistent Chromium profile. Passwords, OTPs, CAPTCHA and account checkpoints are not automated. No private API, session-cookie export, stealth extension or anti-detection bypass is used.
+The optional browser worker uses the ordinary Threads website, without a Meta developer app. The owner signs in to **mimiao.crm** manually; cookies live in a dedicated persistent browser profile. Passwords, OTPs, CAPTCHA and account checkpoints are not automated. No private Meta API or session-cookie export is used. Browser choice cannot remove a Meta account or rate restriction.
+
+## Camoufox Profile Manager deployment
+
+The VPS uses `compose.yml:compose.camoufox.yml` with `BROWSER_ENGINE=camoufox`.
+Do not combine the Camoufox and Chromium overlays. CPM 0.6.0 is pinned to its
+release wheel SHA-256 in `Dockerfile.camoufox`. Its dependencies constrain the
+Python Playwright version separately from the Studio TypeScript client.
+
+The manager owns a persistent profile named **Mimiao Threads**. Its immutable ID
+is saved in `/data/studio-profile-id`; deletion fails closed rather than selecting
+another profile. Other profiles in the manager are never used by Studio.
+The initial profile uses Linux to match the VPS and fixed English UI languages.
+No proxy rotation, imported browser cookies or automatic login is configured.
+The first launch leaves the browser on a blank page for the owner.
+
+`deploy/camoufox/studio_bridge.py` adds an authenticated, serialized DOM-command
+adapter to CPM. The existing TypeScript publisher still owns account checks,
+attachments, the durable send boundary and reconciliation. Commands have bounded
+timeouts and are never retried, including on a lost response. Media uploads can
+only read the read-only shared media directory. The adapter uses the CPM 0.6.0
+session implementation; review and test this contract before upgrading CPM.
+
+Set private `CAMOUFOX_STUDIO_KEY` (32+ characters), `CAMOUFOX_OWNER_PASSWORD`
+(16+ characters), `CAMOUFOX_SECRET_KEY` (Fernet key), and the existing eight-character
+`BROWSER_DESKTOP_PASSWORD` in the VPS `.env`. The panel creates **owner** only once;
+changing the environment password does not silently reset an existing account.
+Automatic CPM profile backups are explicitly disabled to respect owner preference.
+There is no CI or automatic manager upgrade.
+
+Build and start manually:
+
+```sh
+docker compose -f compose.yml -f compose.camoufox.yml build api worker camoufox
+docker compose -f compose.yml -f compose.camoufox.yml up -d --no-build api worker camoufox
+ssh -N -L 6080:127.0.0.1:6080 -L 8000:127.0.0.1:8000 threads@173.242.59.9
+```
+
+Open the profile panel at `http://127.0.0.1:8000` and desktop at
+`http://127.0.0.1:6080/vnc.html`. Both ports bind only to VPS loopback; use SSH.
+The panel has a separate owner password; the worker key never goes to Studio UI.
+The Python process, browser and desktop run unprivileged in a dedicated container.
+Keep one tab open in the publishing profile and finish login manually. Then use
+Studio's **Check login**, review the schedule, and only then remove the global pause.
+
+Rollback selects `compose.yml:compose.browser.yml` and recreates API/worker after
+stopping the Camoufox service. The old Chromium volume and new manager volume are
+separate and retained. Never run both browser workers on the same publishing queue.
 
 ## Local development
 

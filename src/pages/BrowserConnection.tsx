@@ -6,7 +6,7 @@ export function BrowserConnection({state}:{state:any}){
  const labels:Record<string,string>={ready:'Готов к публикации',login_required:'Нужен вход в Threads',starting:'Браузер запускается',offline:'Worker недоступен',attention:'Нужна проверка',error:'Ошибка браузера'};
  return <section className="panel connection-card">
   <div className="section-label"><Monitor size={24}/>{state?.state==='ready'?<CheckCircle2 className="green-text"/>:<AlertCircle className="muted"/>}</div>
-  <h2>Threads через браузер</h2><p>{labels[state?.state]||'Ожидаем браузер'}</p>
+  <h2>{state?.engine==='camoufox'?'Threads через Camoufox':'Threads через браузер'}</h2><p>{labels[state?.state]||'Ожидаем браузер'}</p>
   <p className="hint">{state?.message||'Worker откроет отдельный браузер для @mimiao.crm.'}</p>
   {state?.checked_at&&<p className="hint">Проверено: {time(state.checked_at)}</p>}
   <button disabled={action.isPending} onClick={()=>action.mutate({path:'/jobs/browser-check'})}><RefreshCw size={15}/>Проверить вход</button>
@@ -14,7 +14,8 @@ export function BrowserConnection({state}:{state:any}){
   <p className="hint">Тексты и фотографии публикуются по расписанию. После входа проверьте состояние и снимите общую паузу. При ошибке очередь останавливается; неизвестный результат не отправляется повторно.</p>
   <details><summary>Войти в браузер сервера</summary>
    <p>Браузер доступен только через защищённый SSH-туннель. Запустите на своём компьютере:</p>
-   <code>ssh -N -L 6080:127.0.0.1:6080 threads@173.242.59.9</code>
+   <code>ssh -N -L 6080:127.0.0.1:6080{state?.engine==='camoufox'?' -L 8000:127.0.0.1:8000':''} threads@173.242.59.9</code>
+   {state?.engine==='camoufox'&&<p><a href="http://127.0.0.1:8000" target="_blank" rel="noreferrer">Менеджер профилей Camoufox</a>: войдите под owner с отдельным паролем панели. Для публикации закреплён профиль «Mimiao Threads». Другие профили не используются ботом.</p>}
    <p>Откройте <a href="http://127.0.0.1:6080/vnc.html" target="_blank" rel="noreferrer">окно браузера</a>, нажмите Connect и введите пароль удалённого окна. Войдите в @mimiao.crm, затем нажмите «Проверить вход» здесь.</p>
    <p className="hint">Пароль окна хранится отдельно на VPS. Пароль Threads и коды вводятся только на странице Threads. Сессия сохраняется после перезапуска.</p>
   </details>

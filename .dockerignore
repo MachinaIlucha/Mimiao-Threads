@@ -8,3 +8,4 @@ backups
 test-results
 coverage
 *.log
+**/__pycache__

@@ -4,18 +4,20 @@ import { config } from '../config.js';
 import { sql,one,rows } from '../db.js';
 import { AppError } from '../errors.js';
 import { threadsHome,threadsUsername } from './evidence.js';
+import {camoufoxPage} from './camoufox.js';
 
 let context:BrowserContext|undefined,page:Page|undefined,busy=false;
 export async function browserStatus(){
  const status=await one(sql`SELECT state,message,checked_at FROM browser_status WHERE id=1`);
  const worker=await one(sql`SELECT at FROM heartbeats WHERE name='worker'`);
  const online=!!worker&&Date.now()-Date.parse(worker.at)<120000;
- return {...status,state:online?(status?.state||'starting'):'offline',online};
+ return {...status,state:online?(status?.state||'starting'):'offline',online,engine:config.browserEngine};
 }
 export async function setBrowserStatus(state:string,message:string){
  await rows(sql`INSERT INTO browser_status(id,state,message) VALUES(1,${state},${message}) ON CONFLICT(id) DO UPDATE SET state=EXCLUDED.state,message=EXCLUDED.message,checked_at=now()`);
 }
 export async function browserPage(){
+ if(config.browserEngine==='camoufox')return camoufoxPage();
  if(!context){
   await mkdir(config.browserProfileDir,{recursive:true,mode:0o700});
   await chmod(config.browserProfileDir,0o700);
@@ -54,7 +56,7 @@ export async function checkBrowser(){
  if(config.publishingMode!=='browser'||busy)return;
  try{await withBrowser(assertOwnAccount);}
  catch(error){
-  if(!(error instanceof AppError))await setBrowserStatus('error','Не удалось проверить браузер. Проверьте окно входа и журнал worker.');
+  if(!(error instanceof AppError)||error.code!=='BROWSER_LOGIN_REQUIRED')await setBrowserStatus('error','Не удалось проверить браузер. Проверьте менеджер профилей, окно входа и журнал worker.');
  }
 }
 export async function closeBrowser(){await context?.close();}

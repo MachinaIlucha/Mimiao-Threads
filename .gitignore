@@ -10,3 +10,4 @@ test-results/
 *.log
 *.tsbuildinfo
 OWNER-LOGIN.local.txt
+__pycache__/

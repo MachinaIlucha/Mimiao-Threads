@@ -16,7 +16,7 @@ Media IDs are server-generated UUIDs. Uploaded rasters are decoded with pixel an
 
 ## Publication invariants
 
-The default transport is Meta's official API. An optional [browser transport](browser-publishing.md) runs in the worker with a separate persistent Chromium profile and SSH-only desktop access. Each attempt stores its transport; browser results store a permalink without fabricating an API ID. Both transports share the claim/lock and pause boundary. Unknown/publishing records block the entire queue. Browser errors additionally engage the global pause.
+The default transport is Meta's official API. An optional [browser transport](browser-publishing.md) uses either a worker-owned Chromium profile or a Camoufox Profile Manager 0.6.0 sidecar with a fixed profile ID. Both have SSH-only desktop access. Camoufox's authenticated DOM adapter runs commands without retries; the same publisher owns delivery checks. Each attempt stores its transport; browser results store a permalink without fabricating an API ID. Both transports share the claim/lock and pause boundary. Unknown/publishing records block the entire queue. Browser errors additionally engage the global pause. Never change browser engines while delivery is unresolved.
 
 1. All schedule calculations use IANA `Europe/Kyiv`. UTC is stored in PostgreSQL. Slots are spaced at least90minutes; automated counts are5–8, daytime only.
 2. A day has one plan row, and a post has a unique `(plan_day,slot)`. Plan generation is claimed atomically; insertion is one transaction. Failed generations cannot leave partial plans. Owner revisions are not replaced by rerunning the day.

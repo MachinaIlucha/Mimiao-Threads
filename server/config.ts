@@ -14,10 +14,15 @@ export const config = {
  publishingMode: process.env.PUBLISHING_MODE || 'api',
  browserProfileDir: path.resolve(process.env.BROWSER_PROFILE_DIR || 'data/threads-browser'),
  browserHeadless: process.env.BROWSER_HEADLESS === 'true',
+ browserEngine: process.env.BROWSER_ENGINE || 'chromium',
+ camoufoxUrl: (process.env.CAMOUFOX_URL || 'http://camoufox:8000').replace(/\/$/, ''),
+ camoufoxKey: process.env.CAMOUFOX_STUDIO_KEY || '',
  publicDiscoveryApproved: process.env.THREADS_PUBLIC_DISCOVERY_APPROVED === 'true'
 };
 export function validateConfig() {
  if (!['api','browser'].includes(config.publishingMode)) throw new Error('PUBLISHING_MODE must be api or browser.');
+ if (!['chromium','camoufox'].includes(config.browserEngine)) throw new Error('BROWSER_ENGINE must be chromium or camoufox.');
+ if (config.publishingMode==='browser'&&config.browserEngine==='camoufox'&&config.camoufoxKey.length<32) throw new Error('CAMOUFOX_STUDIO_KEY must contain at least 32 characters.');
  if (!/^[a-f0-9]{64}$/i.test(config.encryptionKey) || config.sessionSecret.length < 32 || !config.passwordHash)
   throw new Error('Run npm run setup to create local secrets and the owner password.');
  if (config.production && !config.publicUrl.startsWith('https://')) throw new Error('Production PUBLIC_URL must use HTTPS.');
