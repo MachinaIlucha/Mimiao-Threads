@@ -24,6 +24,9 @@ attachments, the durable send boundary and reconciliation. Commands have bounded
 timeouts and are never retried, including on a lost response. Media uploads can
 only read the read-only shared media directory. The adapter uses the CPM 0.6.0
 session implementation; review and test this contract before upgrading CPM.
+Camoufox fills the composer through keyboard selection, deletion and typing to
+avoid duplicated text in the rich editor. Exact-text verification remains required
+before recording the send boundary or clicking Post.
 
 Set private `CAMOUFOX_STUDIO_KEY` (32+ characters), `CAMOUFOX_OWNER_PASSWORD`
 (16+ characters), `CAMOUFOX_SECRET_KEY` (Fernet key), and the existing eight-character

@@ -151,7 +151,12 @@ async def execute(page, command):
     elif method == "get_attribute" and command.steps:
         return await target.get_attribute(args[0], **options(args[1]))
     elif method == "fill" and command.steps:
-        await target.fill(args[0])
+        # Native fill can duplicate text in Threads' React contenteditable.
+        # Replace through keyboard events; the publisher still verifies exact text.
+        await target.click()
+        await target.press("ControlOrMeta+A")
+        await target.press("Backspace")
+        await target.press_sequentially(args[0])
     elif method == "set_input_files" and command.steps:
         await target.set_input_files(media_files(args[0]))
     elif method in {"evaluate", "evaluate_all"}:
