@@ -12,6 +12,7 @@ export interface PlanOperations {
     status: string;
     message: string;
     created_at: string;
+    details?: { day?: string };
   }>;
 }
 
@@ -31,6 +32,7 @@ export function readPlanFeedback(
   const error = plan.status === "failed"
     ? data?.events
         .filter((event) => event.kind === "prepare" && event.status === "error"
+          && (!event.details?.day || event.details.day === day)
           && Date.parse(event.created_at) >= Date.parse(plan.updated_at))
         .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))[0]?.message
         ?? 'Не удалось подготовить план. Попробуйте ещё раз или проверьте журнал в «Подключениях».'

@@ -24,8 +24,8 @@ export async function savePost(raw:unknown,id?:string) {
    if(data.revision!==old.revision)throw new AppError(409,'Пост изменился. Обновите страницу.','REVISION_CONFLICT');
   }
   if(data.status==='scheduled'){
-   const conflict=await tx(sql`SELECT id FROM posts WHERE status IN ('scheduled','publishing') AND (${id||null}::uuid IS NULL OR id<>${id||null}::uuid) AND abs(extract(epoch FROM scheduled_at-${data.scheduled_at}::timestamptz))<5400 LIMIT 1`);
-   if(conflict.length)throw new AppError(409,'Между публикациями нужен интервал не меньше 90 минут');
+   const conflict=await tx(sql`SELECT id FROM posts WHERE status IN ('scheduled','publishing') AND (${id||null}::uuid IS NULL OR id<>${id||null}::uuid) AND abs(extract(epoch FROM scheduled_at-${data.scheduled_at}::timestamptz))<60 LIMIT 1`);
+   if(conflict.length)throw new AppError(409,'Это время занято другой публикацией. Выберите время хотя бы на минуту позже.');
   }
   if(old){
    await tx(sql`INSERT INTO revisions(post_id,revision,snapshot,reason) VALUES(${id}::uuid,${old.revision},${JSON.stringify(old)}::jsonb,${data.reason}) ON CONFLICT DO NOTHING`);

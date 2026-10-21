@@ -1,6 +1,6 @@
 import type { Settings } from '../shared/types.js';
 export const defaults: Settings = {
- paused: true, model: 'deepseek-flash', timezone: 'Europe/Kyiv', dailyCount: 5, adaptive: true,
+ paused: true, model: 'deepseek-flash', timezone: 'Europe/Kyiv', dailyCount: 10, adaptive: true,
  startedAt: new Date().toISOString(), researchEnabled: true,
  keywords: ['репетитор','репетитори','викладач','навчальний центр','мовна школа','курси','НМТ','математика','англійська','домашні завдання','оплата занять','скасування уроку','мотивація учнів','інструменти викладача','освіта Україна'],
  profiles: [], forbidden: ['Найкраща CRM','гарантуємо результат','повністю автоматизує школу'], preferred: [],

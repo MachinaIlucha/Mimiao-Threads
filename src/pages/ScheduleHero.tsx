@@ -33,7 +33,7 @@ export function ScheduleHero({
         new Date(p.scheduled_at).getTime() > Date.now(),
     )
     .sort((a, b) => a.scheduled_at!.localeCompare(b.scheduled_at!))[0];
-  const target = settings?.dailyCount || 5;
+  const target = settings?.dailyCount || 10;
   return (
     <section className="schedule-hero">
       <Ambient />
@@ -179,8 +179,7 @@ export function ScheduleSummary({
       <div className="summary-note">
         <Clock3 size={17} />
         <p>
-          Между постами — от 90 минут. У каждого текста есть время быть
-          замеченным.
+          Время публикаций выбирается автоматически. Сегодня интервалы могут сокращаться, чтобы весь план поместился в день.
         </p>
       </div>
       <button className="summary-action" onClick={onCreate}>

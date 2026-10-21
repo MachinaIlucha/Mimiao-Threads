@@ -19,6 +19,7 @@ export function PostPreview({
   schedule: string;
 }) {
   const { calm } = useVisual();
+  const scheduledTime = DateTime.fromISO(schedule, { zone: "Europe/Kyiv" });
   return (
     <aside className="post-preview">
       <div className="preview-heading">
@@ -60,8 +61,8 @@ export function PostPreview({
       <div className="preview-schedule">
         <span className="dot" />
         <span>
-          {schedule
-            ? `${DateTime.fromISO(schedule).setLocale("ru").toFormat("d MMMM · HH:mm")} по Киеву`
+          {scheduledTime.isValid
+            ? `${scheduledTime.setZone("Europe/Kyiv").setLocale("ru").toFormat("d MMMM · HH:mm")} по Киеву`
             : "Время публикации пока не выбрано"}
         </span>
       </div>

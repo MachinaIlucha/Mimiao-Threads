@@ -24,11 +24,11 @@ export async function optimize(){
   const stats=(arm:string)=>{const dates=Object.keys(active.assignments).filter(d=>active.assignments[d]===arm);const subset=samples.filter(p=>dates.includes(p.day));const measured=days.filter(d=>dates.includes(d.day)&&d.delta!==null);return{days:new Set(subset.map(p=>p.day)).size,meaningful:subset.reduce((n,p)=>n+p.meaningful,0),medianViews:median(subset.map(p=>p.views).filter(v=>v!==null)),dailyFollowers:measured.length===14?measured.reduce((n,d)=>n+Number(d.delta),0)/14:null};};
   const base=stats('base'),extra=stats('extra'),decision=chooseExperiment(base,extra);
   await rows(sql`UPDATE experiments SET status='complete',result=${JSON.stringify({base,extra,decision,limitation:'Наблюдательный эксперимент; темы и время могут влиять на результат'})}::jsonb WHERE id=${active.id}::uuid`);
-  if(decision==='increase')await rows(sql`UPDATE settings SET value=jsonb_set(value,'{dailyCount}',${JSON.stringify(Math.min(8,active.base_count+1))}::jsonb) WHERE id=1`);
+  if(decision==='increase')await rows(sql`UPDATE settings SET value=jsonb_set(value,'{dailyCount}',${JSON.stringify(Math.max(s.dailyCount,Math.min(10,active.base_count+1)))}::jsonb) WHERE id=1`);
   await event('experiment','success','Эксперимент частоты завершён',{decision});return;
  }
  const coverage=await one(sql`SELECT count(DISTINCT (p.published_at AT TIME ZONE 'Europe/Kyiv')::date)::int AS days FROM posts p JOIN metrics m ON m.post_id=p.id WHERE m.source='api' AND m.checkpoint='24h' AND m.age_hours BETWEEN 24 AND 28 AND p.root_id IS NULL`);
- if(coverage!.days<28||s.dailyCount>=8)return;
+ if(coverage!.days<28||s.dailyCount>=10)return;
  const start=tomorrow(),end=DateTime.fromISO(start).plus({days:27}).toISODate();
  await rows(sql`INSERT INTO experiments(starts_on,ends_on,base_count,assignments) VALUES(${start},${end},${s.dailyCount},${JSON.stringify(experimentAssignments(start))}::jsonb) ON CONFLICT DO NOTHING`);
 }

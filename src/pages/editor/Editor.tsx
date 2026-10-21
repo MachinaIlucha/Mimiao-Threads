@@ -4,7 +4,7 @@ import { useDialog } from "./useDialog";
 import { PostPreview } from "./PostPreview";
 import { useVisual } from "../../visual";
 import { useState } from "react";
-import { DateTime } from "luxon";
+import { toKyivInput, fromKyivInput } from "../../../shared/post-time";
 import {
   X,
   Upload,
@@ -33,11 +33,7 @@ export function Editor({
     [reason, setReason] = useState(""),
     [mediaIds, setMediaIds] = useState(post?.media_ids || []),
     [schedule, setSchedule] = useState(
-      post?.scheduled_at
-        ? DateTime.fromISO(post.scheduled_at)
-            .setZone("Europe/Kyiv")
-            .toFormat("yyyy-MM-dd'T'HH:mm")
-        : "",
+      toKyivInput(post?.scheduled_at),
     );
   const dialogRef = useDialog(onClose),
     { calm } = useVisual();
@@ -51,6 +47,12 @@ export function Editor({
   const locked =
     !!post && ["published", "publishing", "unknown"].includes(post.status);
   async function save(status: "draft" | "scheduled" | "cancelled") {
+    const scheduledAt = fromKyivInput(schedule);
+    if (status === "scheduled" && !scheduledAt) {
+      setError(new Error("Выберите корректное время публикации"));
+      return;
+    }
+    setError(undefined);
     try {
       await action.mutateAsync({
         path: post ? `/posts/${post.id}` : "/posts",
@@ -62,13 +64,7 @@ export function Editor({
           topic,
           reason,
           media_ids: mediaIds,
-          scheduled_at: schedule
-            ? DateTime.fromFormat(schedule, "yyyy-MM-dd'T'HH:mm", {
-                zone: "Europe/Kyiv",
-              })
-                .toUTC()
-                .toISO()
-            : null,
+          scheduled_at: scheduledAt,
           status,
           revision: post?.revision,
           sources: post?.sources || [],

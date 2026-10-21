@@ -1,7 +1,7 @@
 import { DateTime } from 'luxon';
 import { config,validateConfig } from './config.js';
 import { migrate } from './migrate.js';
-import { boss,startQueue,jobNames } from './jobs.js';
+import { boss,startQueue,jobNames,parsePrepareRequest,type PrepareRequest } from './jobs.js';
 import { sql,rows,one,pool } from './db.js';
 import { research } from './services/research.js';
 import { prepareDay,replaceExpired } from './services/generation.js';
@@ -17,7 +17,19 @@ import { checkBrowser,closeBrowser } from './browser/session.js';
 validateConfig();await migrate();await startQueue();
 const handlers={research,prepare:()=>prepareDay(),publish:publishDue,reconcile,metrics:collectMetrics,replies:collectReplies,refresh:refreshToken,history:async()=>{await importHistory();await collectMetrics();},review:weeklyReview,optimize,evergreen:replaceExpired,'browser-check':checkBrowser};
 const schedules={research:'0 18 * * *',prepare:'0 19 * * *',publish:'* * * * *',reconcile:'*/5 * * * *',metrics:'*/15 * * * *',replies:'*/15 * * * *',refresh:'0 7 * * *',history:'0 6 * * *',review:'0 10 * * 1',optimize:'30 17 * * *',evergreen:'*/10 * * * *'};
-for(const name of jobNames){await boss.work(name,async()=>{try{await handlers[name]();await heartbeat(name);}catch(e){await event(name,'error',safeMessage(e));throw new Error(safeMessage(e));}});}
+for(const name of jobNames){await boss.work(name,async jobs=>{for(const job of jobs){
+ let request:PrepareRequest|undefined;
+ try{
+  if(name==='prepare'){request=parsePrepareRequest(job.data);await prepareDay(request.day,{regenerate:request.regenerate});}
+  else await handlers[name]();
+  await heartbeat(name);
+ }catch(e){
+  const rawDay=job.data&&typeof job.data==='object'&&'day' in job.data?job.data.day:undefined;
+  const day=request?.day??(typeof rawDay==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(rawDay)?rawDay:undefined);
+  await event(name,'error',safeMessage(e),name==='prepare'&&day?{day}:{});
+  throw new Error(safeMessage(e));
+ }
+}});}
 for(const [name,cron]of Object.entries(schedules))await boss.schedule(name,cron,{}, {tz:'Europe/Kyiv',singletonKey:name});
 async function maintenance(){
  await heartbeat('worker');

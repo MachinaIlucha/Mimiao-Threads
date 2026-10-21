@@ -53,6 +53,17 @@ describe("readPlanFeedback", () => {
     expect(events).toEqual(originalOrder);
   });
 
+  it("ignores failure from another target day", () => {
+    const data: PlanOperations = {
+      plans: [plan("failed")],
+      events: [
+        { ...event("Wrong day", "2026-10-21T12:02:00Z"), details: { day: "2026-10-21" } },
+        { ...event("Selected day failure", "2026-10-21T12:01:00Z"), details: { day } },
+      ],
+    };
+    expect(readPlanFeedback(data, day).error).toBe("Selected day failure");
+  });
+
   it("uses a clear fallback when the failure event has not arrived", () => {
     expect(readPlanFeedback({
       plans: [plan("failed")],

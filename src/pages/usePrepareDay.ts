@@ -23,7 +23,7 @@ export function usePrepareDay(day: string) {
   }, [day, reset]);
 
   useEffect(() => {
-    if (queued && (feedback.state === "generating" || feedback.state === "ready"
+    if (queued && (feedback.state === "generating"
       || feedback.updatedAt !== queuedBaseline)) {
       setQueuedBaseline(undefined);
     }
@@ -44,10 +44,10 @@ export function usePrepareDay(day: string) {
     error: action.error ?? operations.error ?? (state === "failed" ? feedback.error : null),
     busy,
     loading,
-    prepare: () => {
-      if (busy || loading || state === "ready") return;
+    prepare: (regenerate = false) => {
+      if (busy || loading || (state === "ready" && !regenerate)) return;
       setQueuedBaseline(feedback.updatedAt);
-      action.mutate({ path: "/jobs/prepare" }, {
+      action.mutate({ path: "/jobs/prepare", body: { day, regenerate } }, {
         onError: () => setQueuedBaseline(undefined),
       });
     },

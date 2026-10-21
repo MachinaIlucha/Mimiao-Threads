@@ -1,7 +1,7 @@
 import { motion, AnimatePresence } from "motion/react";
 import { ScheduleHero, ScheduleSummary } from "./ScheduleHero";
 import { useVisual } from "../visual";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { DateTime } from "luxon";
 import { Plus, Sparkles, Image, ArrowRight } from "lucide-react";
 import type { Post, Settings } from "../../shared/types";
@@ -24,11 +24,17 @@ export function Queue({ calendar }: { calendar: boolean }) {
       .setZone("Europe/Kyiv")
       .plus({ days: 1 })
       .toISODate()!;
-  const prepare = usePrepareDay(tomorrow);
+  const prepareToday = usePrepareDay(today), prepareTomorrow = usePrepareDay(tomorrow);
+  const [activePreparationDay, setActivePreparationDay] = useState(tomorrow);
+  useEffect(() => setActivePreparationDay(tomorrow), [today, tomorrow]);
+  const targetDay = activePreparationDay === today ? today : tomorrow;
+  const prepare = targetDay === today ? prepareToday : prepareTomorrow;
+  const preparing = prepareToday.loading || prepareToday.busy || prepareTomorrow.loading || prepareTomorrow.busy;
+  const targetLabel = time(targetDay + "T12:00:00Z", { day: "numeric", month: "long" });
   const list = (posts.data || [])
     .filter(
       (p) =>
-        !p.root_id &&
+        !p.root_id && (tab === "all" || p.status !== "cancelled") &&
         (tab === "drafts"
           ? ["draft", "blocked", "unknown", "missed"].includes(p.status)
           : tab === "all"
@@ -61,29 +67,34 @@ export function Queue({ calendar }: { calendar: boolean }) {
         <button onClick={() => setSelected(null)}>
           <Plus size={16} /> Новый пост
         </button>
-        <button
-          className="primary"
-          disabled={prepare.loading || prepare.busy}
-          onClick={() => {
-            setTab("tomorrow");
-            setDate(tomorrow);
-            prepare.prepare();
-          }}
-        >
-          <Sparkles size={16} /> {prepare.loading ? "Проверяем план…"
-            : prepare.state === "queued" ? "Ожидаем запуск…"
-            : prepare.state === "generating" ? "Готовим посты…"
-            : prepare.state === "ready" ? "Показать план на завтра"
-            : prepare.state === "failed" ? "Повторить подготовку"
-            : "Подготовить завтра"}
-        </button>
+        {[
+          { day: today, label: "сегодня", hook: prepareToday },
+          { day: tomorrow, label: "завтра", hook: prepareTomorrow },
+        ].map(({ day, label, hook }) => (
+          <button
+            key={day}
+            className="primary"
+            disabled={preparing}
+            onClick={() => {
+              setActivePreparationDay(day);
+              setTab(calendar ? "tomorrow" : day === today ? "today" : "tomorrow");
+              setDate(day);
+              hook.prepare(true);
+            }}
+          >
+            <Sparkles size={16} /> {hook.busy ? `Готовим на ${label}…`
+              : hook.state === "ready" || hook.state === "failed" || hook.count > 0
+                ? `Перегенерировать на ${label}` : `Подготовить ${label}`}
+          </button>
+        ))}
       </PageHeading>
+      <p className="hint">При перегенерации заменяются неопубликованные посты выбранного дня. Старые версии сохраняются; опубликованные посты остаются.</p>
       <ErrorMessage error={prepare.error} />
       {["queued", "generating", "ready"].includes(prepare.state) && (
         <p role="status" aria-live="polite" className="success-note">
-          {prepare.state === "queued" ? "Задание в очереди. Ждём запуска подготовки."
-            : prepare.state === "generating" ? "DeepSeek готовит посты на завтра. Результат появится автоматически."
-            : `План на ${time(tomorrow + "T12:00:00Z", { day: "numeric", month: "long" })} подготовлен. Постов: ${prepare.count}. Проверьте тексты и время публикаций ниже.`}
+          {prepare.state === "queued" ? `Задание на ${targetLabel} в очереди. Ждём запуска подготовки.`
+            : prepare.state === "generating" ? `DeepSeek готовит посты на ${targetLabel}. Результат появится автоматически.`
+            : `План на ${targetLabel} подготовлен. Постов: ${prepare.count}. Проверьте тексты и время публикаций ниже.`}
         </p>
       )}
       {!calendar && !posts.isPending && !posts.error && (

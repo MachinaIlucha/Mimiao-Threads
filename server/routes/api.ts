@@ -11,7 +11,7 @@ import { AppError } from '../errors.js';
 import { checkText } from '../domain/editorial.js';
 import { resolvePublication } from '../services/resolution.js';
 const idOf=(params:unknown)=>z.object({id:z.string().uuid()}).parse(params).id;
-const settingsSchema=z.object({paused:z.boolean(),model:z.string().regex(/^deepseek-[a-z0-9-]+$/),timezone:z.literal('Europe/Kyiv'),keywords:z.array(z.string().min(1).max(128)).max(30),profiles:z.array(z.string().regex(/^[\w.]{1,50}$/)).max(50),knowledge:z.string().max(30000),voice:z.string().max(10000),forbidden:z.array(z.string().min(1).max(300)).max(100),preferred:z.array(z.string().max(300)).max(100),dailyCount:z.number().int().min(5).max(8),adaptive:z.boolean(),researchEnabled:z.boolean()});
+const settingsSchema=z.object({paused:z.boolean(),model:z.string().regex(/^deepseek-[a-z0-9-]+$/),timezone:z.literal('Europe/Kyiv'),keywords:z.array(z.string().min(1).max(128)).max(30),profiles:z.array(z.string().regex(/^[\w.]{1,50}$/)).max(50),knowledge:z.string().max(30000),voice:z.string().max(10000),forbidden:z.array(z.string().min(1).max(300)).max(100),preferred:z.array(z.string().max(300)).max(100),dailyCount:z.number().int().min(5).max(10),adaptive:z.boolean(),researchEnabled:z.boolean()});
 function csvCell(value:unknown){const str=value===null||value===undefined?'':String(value);return '"'+(/^[=+\-@\t\r]/.test(str)?"'":'')+str.replaceAll('"','""')+'"';}
 export async function apiRoutes(app:FastifyInstance){
  app.get('/api/settings',settings);
@@ -23,7 +23,7 @@ export async function apiRoutes(app:FastifyInstance){
  app.post('/api/posts/:id/resolve',req=>resolvePublication(idOf(req.params),z.object({providerId:z.string().regex(/^\d+$/)}).parse(req.body).providerId));
  app.get('/api/posts/:id/history',async req=>({revisions:await rows(sql`SELECT * FROM revisions WHERE post_id=${idOf(req.params)}::uuid ORDER BY revision DESC`),attempts:await rows(sql`SELECT * FROM publish_attempts WHERE post_id=${idOf(req.params)}::uuid ORDER BY started_at DESC`)}));
  app.post('/api/posts/:id/variant',async req=>{const p=await one(sql`SELECT * FROM posts WHERE id=${idOf(req.params)}::uuid`);if(!p)throw new AppError(404,'Пост не найден');const s=await settings();const result=await generate('variant','Return JSON {text:string}. Rewrite this post in Ukrainian with a different hook, preserve verified facts and sources. Do not invent experiences. Max500characters.',{post:p,voice:s.voice,knowledge:s.knowledge},z.object({text:z.string().max(500)}));const errors=checkText(result.text,s,[]);if(errors.length)throw new AppError(502,errors.join('. '));return result;});
- app.post('/api/jobs/:name',req=>enqueue(z.object({name:z.enum(jobNames)}).parse(req.params).name));
+ app.post('/api/jobs/:name',req=>enqueue(z.object({name:z.enum(jobNames)}).parse(req.params).name,req.body));
  app.get('/api/ideas',()=>rows(sql`SELECT * FROM ideas ORDER BY created_at DESC LIMIT 500`));
  app.post('/api/ideas',async req=>{const p=z.object({text:z.string().min(1).max(10000),source_url:z.string().url().nullable().default(null)}).parse(req.body);return one(sql`INSERT INTO ideas(text,source_url) VALUES(${p.text},${p.source_url}) RETURNING *`);});
  app.patch('/api/ideas/:id',async req=>{const p=z.object({state:z.enum(['saved','use','dismissed']),note:z.string().max(2000).default('')}).parse(req.body);return one(sql`UPDATE ideas SET state=${p.state},note=${p.note},updated_at=now() WHERE id=${idOf(req.params)}::uuid RETURNING *`);});
