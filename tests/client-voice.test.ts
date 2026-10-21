@@ -109,3 +109,28 @@ it('keeps replies unrestricted by the audience opening',()=>{
   expect(clientVoiceErrors('reply',{draft:'Дякую, що поділилися досвідом.'})).toEqual([]);
   expect(clientVoiceInstruction('reply')).not.toContain('Обязательная адаптация для Threads');
 });
+
+const readableText = 'Вчителі, спробуйте залишити наприкінці заняття хвилину для одного конкретного запитання. 💡\n\nЩо учневі вже зрозуміло, а до чого варто повернутися наступного разу?';
+it('preserves parsed JSON newlines in both generated public fields exactly', async () => {
+  const plan={posts:[{text:readableText,alternative:readableText.replace('💡','📚'),category:'teaching',sourceUrls:[]}]};
+  respond(plan);
+  await expect(generate('daily-plan','Return JSON.',{},planFormat)).resolves.toEqual(plan);
+});
+it('rejects a long unbroken alternative and records its failed style check', async () => {
+  respond({posts:[{text:readableText,alternative:readableText.replace(/\n/g,' '),category:'teaching',sourceUrls:[]}]});
+  await expect(generate('daily-plan','Return JSON.',{},planFormat)).rejects.toMatchObject({code:'GENERATION_STYLE_INVALID'});
+  expect(rows).toHaveBeenCalledOnce();
+  const query=vi.mocked(rows).mock.calls[0][0] as {queryChunks:unknown[]};
+  expect(JSON.stringify(query)).toContain('posts[0].alternative');
+  expect(JSON.stringify(query)).toContain('styleErrors');
+});
+it.each(['daily-plan','variant','evergreen'])('checks layout on both fields for %s', kind => {
+  for(const field of ['text','alternative'] as const){
+    const post={text:readableText,alternative:readableText,[field]:readableText.replace(/\n/g,' ')};
+    const errors=clientVoiceErrors(kind,kind==='daily-plan'?{posts:[post]}:post);
+    expect(errors).toHaveLength(1);expect(errors[0]).toContain(field);expect(errors[0]).toContain('два абзаца');
+  }
+});
+it('exempts replies from post layout and emoji limits', () => {
+  expect(clientVoiceErrors('reply',{draft:`${'Дякую за відповідь. '.repeat(15)}💡 📚 👩🏽‍🏫`})).toEqual([]);
+});

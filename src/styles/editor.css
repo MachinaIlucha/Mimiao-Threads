@@ -14,6 +14,7 @@
 .text-tools button { font-size: 12px; border: 0; color: var(--amber); padding: 6px 0; background: transparent; }
 .alternative,.rationale { padding: 20px; border-radius: 12px; background: var(--soft); border: 1px solid #e6aa561c; margin: 22px 0; }
 .alternative p,.rationale p { font-size: 14px; }
+.alternative p { white-space: pre-wrap; overflow-wrap: anywhere; }
 .alternative button { font-size: 12px; padding: 8px 10px; }
 .alternative .eyebrow,.rationale .eyebrow { font-size: 12px; margin-bottom: 12px; color: #ddba8b; }
 .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }

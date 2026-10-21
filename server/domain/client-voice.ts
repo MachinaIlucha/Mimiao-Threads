@@ -1,5 +1,6 @@
 import { CLIENT_VOICE } from '../../shared/client-voice.js';
 import { CLIENT_COMMUNICATION_SOURCES } from '../../shared/client-communication-sources.js';
+import { threadLayoutErrors } from './thread-layout.js';
 
 const publicCopyKinds = new Set(['daily-plan', 'variant', 'evergreen', 'reply']);
 const audienceCopyKinds = new Set(['daily-plan', 'variant', 'evergreen']);
@@ -36,6 +37,7 @@ export function clientVoiceErrors(kind: string, result: unknown): string[] {
   const errors = hasDash ? ['Стиль общения Mimiao: перепишите текст без тире, а диапазоны выразите словами.'] : [];
   if(audienceCopyKinds.has(kind)){
     for(const {field,text} of copy){
+      errors.push(...threadLayoutErrors(text || '').map(error => `${field}: ${error}`));
       if(!audienceOpening.test((text||'').trimStart()))errors.push(`Стиль общения Mimiao: ${field} не начинается с обращения к аудитории. Начните с «Репетитори,», «Вчителі,», «Викладачі,» или «Власники шкіл,»; представление основателя следует после обращения.`);
     }
   }

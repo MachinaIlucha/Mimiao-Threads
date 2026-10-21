@@ -54,6 +54,35 @@ describe('authenticated API and editor',()=>{
  });
 });
 describe('daily generation',()=>{
+ it.each(['source','trend'])('repairs repeated %s evidence before persisting the complete plan',async kind=>{
+  const url='https://example.org/confirmed-topic';
+  const trend=(await one(sql`INSERT INTO trends(title,summary,angle,evidence,score,confidence,expires_at) VALUES('Тема','Опис','Порада',${JSON.stringify([{url}])}::jsonb,1,'high','2099-10-22T22:00:00+03:00') RETURNING *`))!;
+  const withEvidence=(uses:number)=>planPosts().map((p,i)=>({...p,sourceUrls:kind==='source'&&i<uses?[url]:[],trendId:kind==='trend'&&i<uses?trend.id:null}));
+  vi.mocked(generate).mockResolvedValueOnce({posts:withEvidence(3)}).mockImplementationOnce(async()=>{
+   expect(await rows(sql`SELECT * FROM posts`)).toHaveLength(0);
+   expect(await rows(sql`SELECT * FROM revisions`)).toHaveLength(0);
+   return {posts:withEvidence(2)};
+  });
+  expect(await prepareDay('2099-10-20')).toEqual({day:'2099-10-20',count:5});
+  expect(generate).toHaveBeenCalledTimes(2);
+  const feedback=(vi.mocked(generate).mock.calls[1][2] as {validationErrors:string[]}).validationErrors.join(' ');
+  expect(feedback).toContain(kind==='source'?`источник ${url}`:`тренд ${trend.id}`);expect(feedback).toContain('максимум 2');
+  const posts=await rows(sql`SELECT * FROM posts ORDER BY slot`);expect(posts).toHaveLength(5);
+  expect(posts.map(p=>p.text)).toEqual(planPosts().map(p=>p.text));
+  expect(posts.filter(p=>kind==='source'?p.sources.length>0:p.expires_at!==null)).toHaveLength(2);
+  expect(posts.every(p=>p.status==='scheduled'&&p.generated)).toBe(true);
+ });
+ it('preserves the old plan and revisions after three diversity failures',async()=>{
+  const old=await readyPost(),url='https://example.org/overused-topic';
+  await rows(sql`INSERT INTO trends(title,summary,angle,evidence,score,confidence,expires_at) VALUES('Тема','Опис','Порада',${JSON.stringify([{url}])}::jsonb,1,'high','2099-10-22T22:00:00+03:00')`);
+  await rows(sql`INSERT INTO revisions(post_id,revision,snapshot,reason) VALUES(${old.id}::uuid,0,${JSON.stringify(old)}::jsonb,'Существующая правка')`);
+  const revisions=await rows(sql`SELECT * FROM revisions`);
+  vi.mocked(generate).mockResolvedValue({posts:planPosts().map((p,i)=>({...p,sourceUrls:i<3?[url]:[]}))});
+  await expect(prepareDay('2099-10-20',{regenerate:true})).rejects.toMatchObject({code:'GENERATION_INVALID'});
+  expect(generate).toHaveBeenCalledTimes(3);expect(await rows(sql`SELECT * FROM posts`)).toEqual([old]);
+  expect(await rows(sql`SELECT * FROM revisions`)).toEqual(revisions);
+  expect(await one(sql`SELECT status FROM daily_plans`)).toMatchObject({status:'failed'});
+ });
  it('claims a day once across concurrent requests',async()=>{vi.mocked(generate).mockResolvedValue({posts:texts.map(text=>({text,alternative:text,category:'teaching',topic:'Вопрос',reason:'Обсуждение',sourceUrls:[],trendId:null,verified:true,concerns:[]}))});await Promise.all([prepareDay('2099-10-20'),prepareDay('2099-10-20')]);expect(generate).toHaveBeenCalledTimes(1);expect((await rows(sql`SELECT * FROM posts`))).toHaveLength(5);});
  it('creates ten future posts when configured for ten',async()=>{
   await rows(sql`UPDATE settings SET value=jsonb_set(value,'{dailyCount}','10')`);mockPlan(10);
