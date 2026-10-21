@@ -6,14 +6,14 @@ import { DateTime } from "luxon";
 import { Plus, Sparkles, Image, ArrowRight } from "lucide-react";
 import type { Post, Settings } from "../../shared/types";
 import { labels } from "../../shared/types";
-import { useData, useAction, time, dayKey } from "../api";
+import { useData, time, dayKey } from "../api";
+import { usePrepareDay } from "./usePrepareDay";
 import { Badge, Busy, Empty, ErrorMessage, PageHeading } from "../components";
 import { Editor } from "./editor/Editor";
 export function Queue({ calendar }: { calendar: boolean }) {
   const { calm } = useVisual();
   const posts = useData<Post[]>("/posts"),
-    settings = useData<Settings>("/settings"),
-    action = useAction();
+    settings = useData<Settings>("/settings");
   const [tab, setTab] = useState("tomorrow"),
     [date, setDate] = useState(
       DateTime.now().setZone("Europe/Kyiv").plus({ days: 1 }).toISODate()!,
@@ -24,6 +24,7 @@ export function Queue({ calendar }: { calendar: boolean }) {
       .setZone("Europe/Kyiv")
       .plus({ days: 1 })
       .toISODate()!;
+  const prepare = usePrepareDay(tomorrow);
   const list = (posts.data || [])
     .filter(
       (p) =>
@@ -62,17 +63,27 @@ export function Queue({ calendar }: { calendar: boolean }) {
         </button>
         <button
           className="primary"
-          disabled={action.isPending}
-          onClick={() => action.mutate({ path: "/jobs/prepare" })}
+          disabled={prepare.loading || prepare.busy}
+          onClick={() => {
+            setTab("tomorrow");
+            setDate(tomorrow);
+            prepare.prepare();
+          }}
         >
-          <Sparkles size={16} /> Подготовить завтра
+          <Sparkles size={16} /> {prepare.loading ? "Проверяем план…"
+            : prepare.state === "queued" ? "Ожидаем запуск…"
+            : prepare.state === "generating" ? "Готовим посты…"
+            : prepare.state === "ready" ? "Показать план на завтра"
+            : prepare.state === "failed" ? "Повторить подготовку"
+            : "Подготовить завтра"}
         </button>
       </PageHeading>
-      <ErrorMessage error={action.error} />
-      {action.isSuccess && (
-        <p className="success-note">
-          Задание добавлено. Результат появится здесь, ошибки — в журнале
-          подключений.
+      <ErrorMessage error={prepare.error} />
+      {["queued", "generating", "ready"].includes(prepare.state) && (
+        <p role="status" aria-live="polite" className="success-note">
+          {prepare.state === "queued" ? "Задание в очереди. Ждём запуска подготовки."
+            : prepare.state === "generating" ? "DeepSeek готовит посты на завтра. Результат появится автоматически."
+            : `План на ${time(tomorrow + "T12:00:00Z", { day: "numeric", month: "long" })} подготовлен. Постов: ${prepare.count}. Проверьте тексты и время публикаций ниже.`}
         </p>
       )}
       {!calendar && !posts.isPending && !posts.error && (

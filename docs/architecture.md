@@ -37,6 +37,8 @@ Comparable24h cohorts require measured age24–28hours, API source and root post
 
 ## Jobs and recovery
 
+The plan screen shows inline queued, generating, ready and failed feedback, polling every 2 seconds while preparation is active. Opening an existing ready plan does not enqueue regeneration. A newly ready plan version refreshes posts automatically.
+
 pg-boss persists queued work and cron schedules in PostgreSQL. Each job type uses singleton concurrency. Core publication idempotency lives in application tables, independent of queue delivery guarantees. Worker heartbeat is every30seconds. API requests enqueue expensive work and return promptly. Provider reads have bounded timeout/retry; writes have one attempt.
 
 Daily generation may retry on worker maintenance after a failure, with a30minute delay and at most3automatic attempts per day. Startup marks stale generating plans failed after35minutes; manual retry remains possible. Research completeness is explicitly limited by API access and search index coverage. Advanced public discovery must be confirmed by deployment configuration and a successful capability probe.
