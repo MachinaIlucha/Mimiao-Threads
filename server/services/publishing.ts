@@ -111,8 +111,12 @@ export async function publishDue() {
    await event('publish',uncertain?'unknown':'error',message,{postId:post.id});
    if(config.publishingMode==='browser'){
     await browserPublishError();
-    await rows(sql`UPDATE settings SET value=jsonb_set(value,'{paused}','true') WHERE id=1`);
-    await event('browser','warning','Очередь автоматически приостановлена после ошибки браузера. Проверьте результат перед продолжением.');
+    if(uncertain){
+     await event('browser','warning','Результат отправки уточняется. Очередь продолжится после подтверждения, если не включена ручная пауза.');
+    }else{
+     await rows(sql`UPDATE settings SET value=jsonb_set(value,'{paused}','true') WHERE id=1`);
+     await event('browser','warning','Очередь автоматически приостановлена после ошибки браузера. Проверьте результат перед продолжением.');
+    }
    }
   }
  } finally {await lock.query('SELECT pg_advisory_unlock(7319403)');lock.release();}

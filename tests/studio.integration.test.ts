@@ -191,13 +191,51 @@ describe('browser publishing transport',()=>{
   vi.mocked(publishInBrowser).mockImplementation(async(_post,beforeSend)=>{await beforeSend([],new Date().toISOString());throw new Error('browser closed after click');});
   await publishDue();
   expect((await one(sql`SELECT status FROM posts WHERE id=${p!.id}::uuid`))!.status).toBe('unknown');
-  expect((await one(sql`SELECT value FROM settings`))!.value.paused).toBe(true);
-  await rows(sql`UPDATE settings SET value=jsonb_set(value,'{paused}','false')`);await due();
+  expect((await one(sql`SELECT value FROM settings`))!.value.paused).toBe(false);
+  const next=await due();
   await publishDue();expect(publishInBrowser).toHaveBeenCalledTimes(1);
+  vi.mocked(reconcileBrowser).mockResolvedValue(null);
+  await reconcile();await publishDue();
+  expect(publishInBrowser).toHaveBeenCalledTimes(1);
+  expect((await one(sql`SELECT status FROM posts WHERE id=${next!.id}::uuid`))!.status).toBe('scheduled');
   vi.mocked(reconcileBrowser).mockResolvedValue({url:'https://www.threads.com/@mimiao.crm/post/abc',timestamp:new Date().toISOString(),text:p!.text,images:0});
-  await reconcile();expect(reconcileBrowser).toHaveBeenCalledTimes(1);
+  await reconcile();expect(reconcileBrowser).toHaveBeenCalledTimes(2);
   expect((await one(sql`SELECT status FROM posts WHERE id=${p!.id}::uuid`))!.status).toBe('published');
+  vi.mocked(publishInBrowser).mockImplementation(async(post,beforeSend)=>{
+   await beforeSend([],new Date().toISOString());
+   return {url:'https://www.threads.com/@mimiao.crm/post/next',timestamp:new Date().toISOString(),text:post.text,images:0};
+  });
+  await publishDue();
+  expect((await one(sql`SELECT status FROM posts WHERE id=${next!.id}::uuid`))!.status).toBe('published');
+  expect(publishInBrowser).toHaveBeenCalledTimes(2);
+  expect(vi.mocked(publishInBrowser).mock.calls.map(([post])=>post.id)).toEqual([p!.id,next!.id]);
+  expect(await rows(sql`SELECT id FROM publish_attempts WHERE post_id=${p!.id}::uuid`)).toHaveLength(1);
   expect(threads).not.toHaveBeenCalled();
+ });
+ it('preserves an owner pause after an uncertain send is reconciled',async()=>{
+  config.publishingMode='browser';const p=await due();
+  vi.mocked(publishInBrowser).mockImplementation(async(_post,beforeSend)=>{await beforeSend([],new Date().toISOString());throw new Error('browser closed after click');});
+  await publishDue();
+  expect((await one(sql`SELECT status FROM posts WHERE id=${p!.id}::uuid`))!.status).toBe('unknown');
+  await rows(sql`UPDATE settings SET value=jsonb_set(value,'{paused}','true')`);
+  const next=await due();
+  vi.mocked(reconcileBrowser).mockResolvedValue({url:'https://www.threads.com/@mimiao.crm/post/abc',timestamp:new Date().toISOString(),text:p!.text,images:0});
+  await reconcile();await publishDue();
+  expect((await one(sql`SELECT status FROM posts WHERE id=${p!.id}::uuid`))!.status).toBe('published');
+  expect((await one(sql`SELECT value FROM settings`))!.value.paused).toBe(true);
+  expect((await one(sql`SELECT status FROM posts WHERE id=${next!.id}::uuid`))!.status).toBe('scheduled');
+  expect(publishInBrowser).toHaveBeenCalledTimes(1);
+  expect(await rows(sql`SELECT id FROM publish_attempts WHERE post_id=${p!.id}::uuid`)).toHaveLength(1);
+ });
+ it('pauses the queue on a known browser failure before the sending boundary',async()=>{
+  config.publishingMode='browser';const p=await due();
+  vi.mocked(publishInBrowser).mockRejectedValue(new Error('browser preflight failed'));
+  await publishDue();
+  expect((await one(sql`SELECT status FROM posts WHERE id=${p!.id}::uuid`))!.status).toBe('blocked');
+  expect((await one(sql`SELECT value FROM settings`))!.value.paused).toBe(true);
+  expect((await one(sql`SELECT phase,sending_at FROM publish_attempts WHERE post_id=${p!.id}::uuid`))).toMatchObject({phase:'failed',sending_at:null});
+  await due();await publishDue();
+  expect(publishInBrowser).toHaveBeenCalledTimes(1);
  });
  it('never launches a browser for a disabled publisher',async()=>{
   config.publishingMode='browser';config.livePublishing=false;await due();await publishDue();expect(publishInBrowser).not.toHaveBeenCalled();
