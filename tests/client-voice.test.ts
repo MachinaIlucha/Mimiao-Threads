@@ -134,3 +134,12 @@ it.each(['daily-plan','variant','evergreen'])('checks layout on both fields for 
 it('exempts replies from post layout and emoji limits', () => {
   expect(clientVoiceErrors('reply',{draft:`${'Дякую за відповідь. '.repeat(15)}💡 📚 👩🏽‍🏫`})).toEqual([]);
 });
+
+it('checks the daily emoji minimum without requiring emoji in individual variants or replies', () => {
+  const text=readableText.replace('💡','');
+  const posts=Array.from({length:5},()=>({text,alternative:text}));
+  const errors=clientVoiceErrors('daily-plan',{posts});
+  expect(errors).toHaveLength(2);expect(errors[0]).toContain('3 из 5 полей text.');expect(errors[1]).toContain('3 из 5 полей alternative.');
+  expect(clientVoiceErrors('variant',{text,alternative:text})).toEqual([]);
+  expect(clientVoiceErrors('reply',{draft:text})).toEqual([]);
+});

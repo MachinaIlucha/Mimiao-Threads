@@ -1,6 +1,6 @@
 import { CLIENT_VOICE } from '../../shared/client-voice.js';
 import { CLIENT_COMMUNICATION_SOURCES } from '../../shared/client-communication-sources.js';
-import { threadLayoutErrors } from './thread-layout.js';
+import { threadBatchLayoutErrors, threadLayoutErrors } from './thread-layout.js';
 
 const publicCopyKinds = new Set(['daily-plan', 'variant', 'evergreen', 'reply']);
 const audienceCopyKinds = new Set(['daily-plan', 'variant', 'evergreen']);
@@ -41,5 +41,6 @@ export function clientVoiceErrors(kind: string, result: unknown): string[] {
       if(!audienceOpening.test((text||'').trimStart()))errors.push(`Стиль общения Mimiao: ${field} не начинается с обращения к аудитории. Начните с «Репетитори,», «Вчителі,», «Викладачі,» или «Власники шкіл,»; представление основателя следует после обращения.`);
     }
   }
+  if(kind==='daily-plan')errors.push(...threadBatchLayoutErrors(value.posts || []));
   return errors;
 }

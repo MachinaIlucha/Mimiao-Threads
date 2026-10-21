@@ -5,6 +5,14 @@ export function countEmojis(text: string): number {
   return Array.from(segmenter.segment(text)).filter(({ segment }) => emoji.test(segment)).length;
 }
 
+export function threadBatchLayoutErrors(posts: readonly { text: string; alternative: string }[]): string[] {
+  if (posts.length < 5) return [];
+  const minimum = Math.ceil(posts.length / 2);
+  return (['text', 'alternative'] as const)
+    .filter(field => posts.filter(post => countEmojis(post[field]) > 0).length < minimum)
+    .map(field => `План: добавьте по одному уместному эмодзи минимум в ${minimum} из ${posts.length} полей ${field}. Выберите для этого обычные нечувствительные темы; чувствительные посты оставьте без эмодзи. Не превышайте два эмодзи на пост.`);
+}
+
 /** Inspect layout without changing the generated text or its line endings. */
 export function threadLayoutErrors(text: string): string[] {
   const normalized = text.replace(/\r\n?/g, '\n').trim();
