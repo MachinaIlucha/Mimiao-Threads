@@ -24,4 +24,6 @@ Daily plans allow each nonnull supplied trend ID and each exact source URL in at
 
 The prompt rotates practical tips, explicitly hypothetical situations, real tradeoffs, appropriate humor and confirmed product usefulness, with no mandatory question or sales ending. Existing Russian `reason` records `Приём: ... Гипотеза: ... Смотрим: ...`, including one concrete response metric. Profile visits or follows may be manually observed; no automatic follower attribution or growth guarantee is implied.
 
+The one-product-call limit does not count ordinary educator suggestions using «спробуйте». That word counts when the post is categorized as product or mentions Mimiao/Міміао/CRM; existing conservative URL, registration and profile-link checks remain.
+
 [Meta's Threads educational insights](https://about.fb.com/news/2024/10/find-your-community-with-new-threads-educational-insights/) inform the focus on original content, conversation and appropriate humor. [NN/g's web-reading research](https://www.nngroup.com/articles/how-users-read-on-the-web/) supports concise writing with one idea per paragraph. The numeric layout limits and emoji policy are our editorial experiment, not Meta requirements or proven reach improvements.

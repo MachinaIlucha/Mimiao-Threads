@@ -6,6 +6,7 @@ import { settings, event, heartbeat } from './state.js';
 import { availableSlotsFor, tomorrow, ZONE } from '../domain/schedule.js';
 import { checkText } from '../domain/editorial.js';
 import { contentDiversityErrors } from '../domain/content-diversity.js';
+import { isProductCta } from '../domain/product-cta.js';
 import { AppError } from '../errors.js';
 import { editableDayPosts, assertDayResolved, writeDayPlan } from './plan-write.js';
 const candidate=z.object({text:z.string().min(1).max(500),alternative:z.string().min(1).max(500),category:z.enum(['teaching','life','founder','product']),topic:z.string().max(200),reason:z.string().max(1500),sourceUrls:z.array(z.string().url()).max(10),trendId:z.string().uuid().nullable(),verified:z.boolean(),concerns:z.array(z.string()).max(10)});
@@ -50,7 +51,7 @@ export async function prepareDay(day=tomorrow(),options:{regenerate?:boolean}={}
      if(p.trendId&&!trends.some(t=>t.id===p.trendId))errors.push('Неизвестный источник темы');
      const invalidUrls=p.sourceUrls.filter(url=>!allowedSourceUrls.includes(url));
      if(invalidUrls.length)errors.push(`posts[${index}].sourceUrls: Неизвестная ссылка ${invalidUrls.slice(0,3).map(url=>url.slice(0,250)).join(', ')}. Use exact allowedSourceUrls entries or [] if there is no external factual claim`);
-     if(/https?:|спробуйте|реєструйте|посилання.*профіл/i.test(p.text))ctas++;
+     if(isProductCta(p.text,p.category))ctas++;
      if(errors.length)throw new AppError(502,`Проверка генерации: ${errors.join('. ')}`,'GENERATION_INVALID');
      texts.push(p.text);
     }

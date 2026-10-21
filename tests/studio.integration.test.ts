@@ -54,6 +54,20 @@ describe('authenticated API and editor',()=>{
  });
 });
 describe('daily generation',()=>{
+ it('accepts five ordinary educator suggestions without counting them as product calls',async()=>{
+  const posts=planPosts().map(p=>({...p,text:`Вчителі, спробуйте обговорити: ${p.text}`}));
+  vi.mocked(generate).mockResolvedValue({posts});
+  expect(await prepareDay('2099-10-20')).toEqual({day:'2099-10-20',count:5});
+  expect(generate).toHaveBeenCalledTimes(1);
+  expect(await rows(sql`SELECT * FROM posts`)).toHaveLength(5);
+ });
+ it('still rejects multiple distinct product solicitations after three attempts',async()=>{
+  const posts=planPosts().map((p,i)=>i<2?{...p,text:`Власники шкіл, спробуйте Mimiao. ${p.text}`,category:'product' as const}:p);
+  vi.mocked(generate).mockResolvedValue({posts});
+  await expect(prepareDay('2099-10-20')).rejects.toMatchObject({code:'GENERATION_INVALID',message:'Слишком много рекламных призывов'});
+  expect(generate).toHaveBeenCalledTimes(3);
+  expect(await rows(sql`SELECT * FROM posts`)).toHaveLength(0);
+ });
  it.each(['source','trend'])('repairs repeated %s evidence before persisting the complete plan',async kind=>{
   const url='https://example.org/confirmed-topic';
   const trend=(await one(sql`INSERT INTO trends(title,summary,angle,evidence,score,confidence,expires_at) VALUES('Тема','Опис','Порада',${JSON.stringify([{url}])}::jsonb,1,'high','2099-10-22T22:00:00+03:00') RETURNING *`))!;
