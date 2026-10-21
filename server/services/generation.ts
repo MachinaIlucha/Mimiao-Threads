@@ -40,14 +40,14 @@ export async function prepareDay(day=tomorrow(),options:{regenerate?:boolean}={}
   let result:z.infer<typeof output>|undefined;let validationErrors:string[]=[];
   for(let attempt=0;attempt<3;attempt++){
    try {
-    result=await generate('daily-plan',instruction,{day,slots,knowledge:s.knowledge,voice:s.voice,forbidden:s.forbidden,preferences:s.preferred,trends,ideas,history,replacing:replacing.map(p=>({text:p.text,topic:p.topic})),edits,reviews,avoidIdeas,allowedSourceUrls,validationErrors},output,allowedSourceUrls);
+    result=await generate('daily-plan',instruction+' Product posts are optional: when the confirmed product facts, trial offer or CTA already appear in history, omit product promotion from this plan and choose a fresh useful evergreen topic. Do not paraphrase the same trial offer daily to meet a category percentage. Do not name the editorial technique in public copy; write naturally (for example, use «уявіть» rather than announcing a hypothetical-situation technique).',{day,slots,knowledge:s.knowledge,voice:s.voice,forbidden:s.forbidden,preferences:s.preferred,trends,ideas,history,replacing:replacing.map(p=>({text:p.text,topic:p.topic})),edits,reviews,avoidIdeas,allowedSourceUrls,validationErrors},output,allowedSourceUrls);
     if(!output.safeParse(result).success)throw new AppError(502,'DeepSeek вернул неподходящий ответ. Публикации не созданы.','GENERATION_INVALID');
     if(result.posts.length!==count)throw new AppError(502,'Модель подготовила неверное число постов','GENERATION_INVALID');
     const diversityErrors=contentDiversityErrors(result.posts);
     if(diversityErrors.length)throw new AppError(502,diversityErrors.join(' '),'GENERATION_INVALID');
     const texts=history.map(p=>p.text);let ctas=0;
     for(const [index,p] of result.posts.entries()){
-     const errors=[...checkText(p.text,s,texts),...checkText(p.alternative,s,history.map(h=>h.text))];if(!p.verified||p.concerns.length)errors.push('Есть неподтверждённые утверждения');
+     const errors=[...checkText(p.text,s,texts).map(error=>`posts[${index}].text (${p.topic}): ${error}`),...checkText(p.alternative,s,history.map(h=>h.text)).map(error=>`posts[${index}].alternative (${p.topic}): ${error}`)];if(!p.verified||p.concerns.length)errors.push(`posts[${index}]: Есть неподтверждённые утверждения`);
      if(p.trendId&&!trends.some(t=>t.id===p.trendId))errors.push('Неизвестный источник темы');
      const invalidUrls=p.sourceUrls.filter(url=>!allowedSourceUrls.includes(url));
      if(invalidUrls.length)errors.push(`posts[${index}].sourceUrls: Неизвестная ссылка ${invalidUrls.slice(0,3).map(url=>url.slice(0,250)).join(', ')}. Use exact allowedSourceUrls entries or [] if there is no external factual claim`);

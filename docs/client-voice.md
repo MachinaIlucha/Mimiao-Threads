@@ -26,4 +26,6 @@ The prompt rotates practical tips, explicitly hypothetical situations, real trad
 
 The one-product-call limit does not count ordinary educator suggestions using «спробуйте». That word counts when the post is categorized as product or mentions Mimiao/Міміао/CRM; existing conservative URL, registration and profile-link checks remain.
 
+Product promotion is optional when confirmed facts or the trial offer have already been covered in history; category targets do not require repeating the same offer. Editorial repair feedback identifies the offending post, public field and topic so the model can replace the duplicate without weakening the similarity check.
+
 [Meta's Threads educational insights](https://about.fb.com/news/2024/10/find-your-community-with-new-threads-educational-insights/) inform the focus on original content, conversation and appropriate humor. [NN/g's web-reading research](https://www.nngroup.com/articles/how-users-read-on-the-web/) supports concise writing with one idea per paragraph. The numeric layout limits and emoji policy are our editorial experiment, not Meta requirements or proven reach improvements.

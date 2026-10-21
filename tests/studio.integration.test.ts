@@ -54,6 +54,26 @@ describe('authenticated API and editor',()=>{
  });
 });
 describe('daily generation',()=>{
+ it.each(['text','alternative'] as const)('identifies the exact duplicate %s field for repair without partial inserts',async field=>{
+  const originalText=planPosts()[0].text;
+  const original=(await one(sql`INSERT INTO posts(text,status,published_at) VALUES(${originalText},'published',now()) RETURNING *`))!;
+  const fresh='Вчителі, запропонуйте учневі намалювати карту понять кольоровими олівцями.';
+  const valid=planPosts().map((p,i)=>i===0?{...p,text:fresh,alternative:fresh}:p);
+  const invalid=valid.map((p,i)=>i===0?{...p,[field]:originalText}:p);
+  vi.mocked(generate).mockResolvedValueOnce({posts:invalid}).mockImplementationOnce(async()=>{
+   expect(await rows(sql`SELECT * FROM posts`)).toEqual([original]);
+   expect(await rows(sql`SELECT * FROM posts WHERE generated=true`)).toHaveLength(0);
+   return {posts:valid};
+  });
+  expect(await prepareDay('2099-10-20')).toEqual({day:'2099-10-20',count:5});
+  expect(generate).toHaveBeenCalledTimes(2);
+  const feedback=(vi.mocked(generate).mock.calls[1][2] as {validationErrors:string[]}).validationErrors.join(' ');
+  expect(feedback).toContain(`posts[0].${field}`);expect(feedback).toContain('Слишком похоже');
+  expect(vi.mocked(generate).mock.calls[0][1]).toContain('Product posts are optional');
+  expect(await rows(sql`SELECT * FROM posts`)).toHaveLength(6);
+  expect(await rows(sql`SELECT * FROM posts WHERE generated=true`)).toHaveLength(5);
+  expect(await one(sql`SELECT * FROM posts WHERE id=${original.id}::uuid`)).toEqual(original);
+ });
  it('accepts five ordinary educator suggestions without counting them as product calls',async()=>{
   const posts=planPosts().map(p=>({...p,text:`Вчителі, спробуйте обговорити: ${p.text}`}));
   vi.mocked(generate).mockResolvedValue({posts});
