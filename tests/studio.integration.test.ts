@@ -67,6 +67,10 @@ describe('daily generation',()=>{
   });
   expect(await prepareDay('2099-10-20')).toEqual({day:'2099-10-20',count:5});
   expect(generate).toHaveBeenCalledTimes(2);
+  for(const call of vi.mocked(generate).mock.calls){
+   expect((call[2] as {history:unknown[]}).history).toEqual([{topic:original.topic,category:original.category}]);
+  }
+  expect(vi.mocked(generate).mock.calls[1][2]).toMatchObject({previousDraft:{posts:invalid}});
   const feedback=(vi.mocked(generate).mock.calls[1][2] as {validationErrors:string[]}).validationErrors.join(' ');
   expect(feedback).toContain(`posts[0].${field}`);expect(feedback).toContain('Слишком похоже');
   expect(vi.mocked(generate).mock.calls[0][1]).toContain('Product posts are optional');

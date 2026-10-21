@@ -30,6 +30,9 @@ it('sends enum and array requirements after the full voice instructions', async 
   expect(contract.properties.posts.items.properties.category.enum).toEqual(['teaching','life','founder','product']);
   expect(contract.properties.posts.items.properties.sourceUrls.type).toBe('array');
   expect(prompt.indexOf('Response format contract:')).toBeGreaterThan(prompt.indexOf(CLIENT_VOICE));
+  expect(prompt.indexOf('Current task requirements:')).toBeGreaterThan(prompt.indexOf(CLIENT_VOICE));
+  expect(prompt.indexOf('Write Ukrainian prose.')).toBeGreaterThan(prompt.indexOf('Current task requirements:'));
+  expect(prompt.indexOf('Response format contract:')).toBeGreaterThan(prompt.indexOf('Write Ukrainian prose.'));
 });
 
 it.each([
