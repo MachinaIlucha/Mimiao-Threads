@@ -236,6 +236,7 @@ export function Editor({
                   value={schedule}
                   onChange={(e) => setSchedule(e.target.value)}
                 />
+                <small>Любое будущее время, в том числе ночью.</small>
               </label>
             </div>
             <label>

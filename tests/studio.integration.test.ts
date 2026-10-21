@@ -31,6 +31,20 @@ describe('authenticated API and editor',()=>{
  it('normalizes photos and restricts access',async()=>{const headers=await login(),image=await sharp({create:{width:50,height:40,channels:3,background:'#bbaadd'}}).png().toBuffer();const boundary='studio-test-boundary';const payload=Buffer.concat([Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="photo"; filename="test.png"\r\nContent-Type: image/png\r\n\r\n`),image,Buffer.from(`\r\n--${boundary}--\r\n`)]);const upload=await app.inject({method:'POST',url:'/api/media',headers:{...headers,'content-type':`multipart/form-data; boundary=${boundary}`},payload});expect(upload.statusCode).toBe(200);const id=upload.json().id;expect((await app.inject(`/media/${id}`)).statusCode).toBe(401);const response=await app.inject({url:`/media/${id}`,headers:{cookie:headers.cookie}});expect(response.headers['content-type']).toBe('image/jpeg');expect((await sharp(response.rawPayload).metadata()).format).toBe('jpeg');});
  it('keeps revisions and rejects stale edits',async()=>{const p=await savePost({text:texts[0]});await savePost({text:texts[1],revision:p.revision,reason:'Новый вопрос'},p.id);await expect(savePost({text:texts[2],revision:p.revision},p.id)).rejects.toMatchObject({statusCode:409});expect((await rows(sql`SELECT * FROM revisions`))).toHaveLength(1);});
  it('allows only one competing scheduled slot',async()=>{const scheduled_at='2099-10-20T09:00:00+03:00';const result=await Promise.allSettled([savePost({text:texts[0],status:'scheduled',scheduled_at}),savePost({text:texts[1],status:'scheduled',scheduled_at})]);expect(result.filter(r=>r.status==='fulfilled')).toHaveLength(1);});
+ it('creates and reschedules manual publications overnight in Kyiv time',async()=>{
+  const headers=await login();let saved:{id:string;revision:number}|undefined;
+  for(const time of ['00:00','03:15','07:59','23:59']){
+   const scheduled_at=`2099-10-20T${time}:00+03:00`;
+   const response=await app.inject({method:saved?'PUT':'POST',url:saved?`/api/posts/${saved.id}`:'/api/posts',headers,payload:{text:texts[0],status:'scheduled',scheduled_at,revision:saved?.revision}});
+   expect(response.statusCode).toBe(200);saved=response.json();
+   const stored=await one(sql`SELECT status,scheduled_at FROM posts WHERE id=${saved!.id}::uuid`);
+   expect(stored!.status).toBe('scheduled');
+   expect(new Date(stored!.scheduled_at).toISOString()).toBe(new Date(scheduled_at).toISOString());
+  }
+ });
+ it('still rejects scheduling in the past',async()=>{
+  await expect(savePost({text:texts[0],status:'scheduled',scheduled_at:'2000-10-20T03:15:00+03:00'})).rejects.toMatchObject({statusCode:400,message:'Выберите время в будущем'});
+ });
 });
 describe('daily generation',()=>{
  it('claims a day once across concurrent requests',async()=>{vi.mocked(generate).mockResolvedValue({posts:texts.map(text=>({text,alternative:text,category:'teaching',topic:'Вопрос',reason:'Обсуждение',sourceUrls:[],trendId:null,verified:true,concerns:[]}))});await Promise.all([prepareDay('2099-10-20'),prepareDay('2099-10-20')]);expect(generate).toHaveBeenCalledTimes(1);expect((await rows(sql`SELECT * FROM posts`))).toHaveLength(5);});

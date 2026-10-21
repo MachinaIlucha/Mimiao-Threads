@@ -4,7 +4,6 @@ import { AppError } from '../errors.js';
 import { settings, event } from './state.js';
 import { checkText } from '../domain/editorial.js';
 import type { Post } from '../../shared/types.js';
-import { DateTime } from 'luxon';
 export const postInput=z.object({text:z.string().max(4000),alternative:z.string().max(4000).default(''),category:z.enum(['teaching','life','founder','product']).default('teaching'),scheduled_at:z.string().datetime({offset:true}).nullable().default(null),media_ids:z.array(z.string().uuid()).max(20).default([]),topic:z.string().max(300).default(''),reason:z.string().max(2000).default(''),sources:z.array(z.string().url()).max(20).default([]),expires_at:z.string().datetime({offset:true}).nullable().default(null),status:z.enum(['draft','scheduled','cancelled']).default('draft'),revision:z.number().int().optional()});
 export async function savePost(raw:unknown,id?:string) {
  const data=postInput.parse(raw),s=await settings();
@@ -15,7 +14,6 @@ export async function savePost(raw:unknown,id?:string) {
   const errors=checkText(data.text,s,history.map(p=>p.text));
   if(errors.length)throw new AppError(400,errors.join('. '));
   if(!data.scheduled_at||new Date(data.scheduled_at).getTime()<Date.now())throw new AppError(400,'Выберите время в будущем');
-  const local=DateTime.fromISO(data.scheduled_at).setZone('Europe/Kyiv');if(local.hour<8||local.hour>23||local.hour===23&&local.minute>0)throw new AppError(400,'Публикации доступны с 08:00 до 23:00 по Киеву');
   if(data.expires_at&&new Date(data.expires_at)<=new Date(data.scheduled_at))throw new AppError(400,'Тема устареет до публикации');
  }
  const post=await transaction(async tx=>{
