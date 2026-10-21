@@ -9,7 +9,7 @@ vi.mock('../server/providers/http', () => ({ requestJson: vi.fn() }));
 import { generate } from '../server/providers/deepseek';
 import { requestJson } from '../server/providers/http';
 import { rows } from '../server/db';
-import { clientVoiceErrors } from '../server/domain/client-voice';
+import { clientVoiceErrors, clientVoiceInstruction } from '../server/domain/client-voice';
 import { CLIENT_VOICE } from '../shared/client-voice';
 import { CLIENT_COMMUNICATION_SOURCES } from '../shared/client-communication-sources';
 
@@ -21,7 +21,7 @@ function respond(value: unknown) {
 const planFormat=z.object({posts:z.array(z.object({text:z.string(),alternative:z.string(),category:z.enum(['teaching','life','founder','product']),sourceUrls:z.array(z.string().url())}))});
 
 it('sends enum and array requirements after the full voice instructions', async () => {
-  const plan={posts:[{text:'Що допомагає учням?',alternative:'Як ви це помічаєте?',category:'teaching',sourceUrls:[]}]};
+  const plan={posts:[{text:'Вчителі, що допомагає учням?',alternative:'Репетитори, як ви це помічаєте?',category:'teaching',sourceUrls:[]}]};
   respond(plan);
   await expect(generate('daily-plan','Write Ukrainian prose.',{},planFormat)).resolves.toEqual(plan);
   const body=JSON.parse(vi.mocked(requestJson).mock.calls[0][1]!.body as string);
@@ -36,13 +36,13 @@ it.each([
   {category:'навчання',sourceUrls:[]},
   {category:'teaching',sourceUrls:null},
 ])('rejects malformed provider fields instead of silently coercing them: %j', async fields => {
-  respond({posts:[{text:'Що допомагає учням?',alternative:'Як ви це помічаєте?',...fields}]});
+  respond({posts:[{text:'Вчителі, що допомагає учням?',alternative:'Репетитори, як ви це помічаєте?',...fields}]});
   await expect(generate('daily-plan','Write Ukrainian prose.',{},planFormat)).rejects.toMatchObject({code:'GENERATION_INVALID'});
   expect(rows).toHaveBeenCalledOnce();
 });
 
 it.each(['daily-plan', 'variant', 'evergreen', 'reply'])('sends the client voice to DeepSeek for %s', async kind => {
-  respond({ text: 'Як ви помічаєте прогрес учнів?', draft: 'Дякую, що поділилися.' });
+  respond({ text: 'Вчителі, як ви помічаєте прогрес учнів?', draft: 'Дякую, що поділилися.' });
   await generate(kind, 'Return JSON. Apply supplied voice.', { voice: 'Особисте уточнення' }, z.object({ text: z.string(), draft: z.string() }));
   const body = JSON.parse(vi.mocked(requestJson).mock.calls[0][1]!.body as string);
   expect(body.messages[0].content).toContain(CLIENT_VOICE);
@@ -54,25 +54,25 @@ it.each(['daily-plan', 'variant', 'evergreen', 'reply'])('sends the client voice
 });
 
 it('rejects a dash in the alternative before returning a daily plan and records the failed check', async () => {
-  respond({ posts: [{ text: 'Що допомагає учням?', alternative: 'Увага — це важливо.' }] });
+  respond({ posts: [{ text: 'Вчителі, що допомагає учням?', alternative: 'Репетитори, увага — це важливо.' }] });
   await expect(generate('daily-plan', 'Return JSON.', {}, z.object({ posts: z.array(z.object({ text: z.string(), alternative: z.string() })) })))
     .rejects.toMatchObject({ code: 'GENERATION_STYLE_INVALID' });
   expect(rows).toHaveBeenCalledOnce();
 });
 
 it.each(['Урок — це розмова.', 'Урок–це розмова.', 'Урок - це розмова.', 'Зустрічаємось 2-3 рази.'])('rejects dash punctuation or numeric ranges: %s', text => {
-  expect(clientVoiceErrors('variant', { text })).not.toHaveLength(0);
+  expect(clientVoiceErrors('variant', { text: `Вчителі, ${text}` })).toContain('Стиль общения Mimiao: перепишите текст без тире, а диапазоны выразите словами.');
 });
 
 it('keeps correct Ukrainian word hyphens and URL hyphens', async () => {
-  const text = 'Будь-який досвід може стати у пригоді. https://example.com/2-3';
+  const text = 'Вчителі, будь-який досвід може стати у пригоді. https://example.com/2-3';
   respond({ text });
   await expect(generate('evergreen', 'Return JSON.', {}, z.object({ text: z.string() }))).resolves.toEqual({ text });
 });
 
 it('checks reply drafts without treating private reasoning or sources as public copy', () => {
   expect(clientVoiceErrors('reply', { draft: 'Дякую — це корисно.' })).not.toHaveLength(0);
-  expect(clientVoiceErrors('daily-plan', { posts: [{ text: 'Що допомагає?', alternative: 'Як ви це робите?', reason: 'Вопрос — для обсуждения' }] })).toEqual([]);
+  expect(clientVoiceErrors('daily-plan', { posts: [{ text: 'Вчителі, що допомагає?', alternative: 'Репетитори, як ви це робите?', reason: 'Вопрос — для обсуждения' }] })).toEqual([]);
 });
 
 it.each(['research', 'weekly-review'])('preserves internal %s language and punctuation', async kind => {
@@ -84,4 +84,28 @@ it.each(['research', 'weekly-review'])('preserves internal %s language and punct
   for (const source of CLIENT_COMMUNICATION_SOURCES) {
     expect(body.messages[0].content).not.toContain(source.text);
   }
+});
+
+it.each(['daily-plan','variant','evergreen'])('requires the educator opening for both public fields in %s',kind=>{
+  const valid='Вчителі, що допомагає вам у роботі?',invalid='Я Ілля, засновник Mimiao.';
+  for(const field of ['text','alternative'] as const){
+    const post={text:valid,alternative:valid,category:'founder',[field]:invalid};
+    const errors=clientVoiceErrors(kind,kind==='daily-plan'?{posts:[post]}:post);
+    expect(errors).toHaveLength(1);expect(errors[0]).toContain(field);expect(errors[0]).toContain('обращения к аудитории');
+  }
+  expect(clientVoiceInstruction(kind)).toContain('включая founder и product');
+});
+it.each(['Репетитори,','Вчителі,','Викладачі,','Власники шкіл,'])('accepts the exact audience opening %s in all public generation kinds',opening=>{
+  const text=`  ${opening.toLocaleLowerCase('uk')} я Ілля, засновник Mimiao.`;
+  for(const kind of ['daily-plan','variant','evergreen']){
+    const post={text,alternative:text,category:'product'};
+    expect(clientVoiceErrors(kind,kind==='daily-plan'?{posts:[post]}:post)).toEqual([]);
+  }
+});
+it.each(['Я Ілля. Вчителі, що думаєте?','Вчителі та репетитори, що думаєте?','Вчителі: що думаєте?'])('rejects an audience address outside the required opening: %s',text=>{
+  expect(clientVoiceErrors('variant',{text})).toHaveLength(1);
+});
+it('keeps replies unrestricted by the audience opening',()=>{
+  expect(clientVoiceErrors('reply',{draft:'Дякую, що поділилися досвідом.'})).toEqual([]);
+  expect(clientVoiceInstruction('reply')).not.toContain('Обязательная адаптация для Threads');
 });
