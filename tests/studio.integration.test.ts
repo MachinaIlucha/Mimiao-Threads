@@ -17,7 +17,7 @@ import { collectMetrics } from '../server/services/analytics';
 import { sendReply } from '../server/services/discussions';
 import { threads,paged } from '../server/providers/threads';
 import { generate } from '../server/providers/deepseek';
-import { ProviderError } from '../server/errors';
+import { AppError,ProviderError } from '../server/errors';
 import { config } from '../server/config';
 import { publishInBrowser,reconcileBrowser } from '../server/browser/publisher';
 import { connection } from '../server/providers/threads';
@@ -77,6 +77,21 @@ describe('daily generation',()=>{
   for(const call of vi.mocked(generate).mock.calls){expect(call[2]).toMatchObject({allowedSourceUrls});expect(call[4]).toEqual(allowedSourceUrls);}
   const repair=vi.mocked(generate).mock.calls[1][2] as {validationErrors:string[]};
   expect(repair.validationErrors.join(' ')).toContain('posts[0].sourceUrls');expect(repair.validationErrors.join(' ')).toContain(invalidUrl);expect(repair.validationErrors.join(' ')).toContain('allowedSourceUrls');expect(repair.validationErrors.join(' ')).toContain('[]');
+  const posts=await rows(sql`SELECT * FROM posts`);expect(posts).toHaveLength(10);expect(posts.every(p=>p.status==='scheduled'&&p.generated&&p.sources.length===0)).toBe(true);expect(await one(sql`SELECT status,count,attempts FROM daily_plans`)).toMatchObject({status:'ready',count:10,attempts:1});
+ });
+ it('retains audience and source validation feedback together on the third attempt',async()=>{
+  await rows(sql`UPDATE settings SET value=jsonb_set(value,'{dailyCount}','10')`);
+  const audienceError='Стиль общения Mimiao: posts[0].text не начинается с обращения к аудитории. Начните с «Вчителі,».';
+  const invalidUrl='https://example.org/unsupported-source';
+  const valid=planPosts(10).map(p=>({...p,text:`Вчителі, ${p.text}`,alternative:`Репетитори, ${p.alternative}`}));
+  const invalid=valid.map((p,i)=>({...p,sourceUrls:i===0?[invalidUrl]:[]}));
+  vi.mocked(generate).mockRejectedValueOnce(new AppError(502,audienceError,'GENERATION_STYLE_INVALID')).mockResolvedValueOnce({posts:invalid}).mockImplementationOnce(async()=>{expect(await rows(sql`SELECT * FROM posts`)).toHaveLength(0);return {posts:valid};});
+  expect(await prepareDay('2099-10-20')).toEqual({day:'2099-10-20',count:10});expect(generate).toHaveBeenCalledTimes(3);
+  const calls=vi.mocked(generate).mock.calls;
+  expect(calls[1][2]).toMatchObject({validationErrors:[audienceError]});
+  const finalInput=calls[2][2] as {validationErrors:string[]};
+  expect(finalInput.validationErrors).toHaveLength(2);expect(finalInput.validationErrors[0]).toBe(audienceError);expect(finalInput.validationErrors[1]).toContain(invalidUrl);expect(finalInput.validationErrors.every(error=>error.length<=1500)).toBe(true);
+  expect(calls[2][1]).toContain('correct them together without violating any other constraints');
   const posts=await rows(sql`SELECT * FROM posts`);expect(posts).toHaveLength(10);expect(posts.every(p=>p.status==='scheduled'&&p.generated&&p.sources.length===0)).toBe(true);expect(await one(sql`SELECT status,count,attempts FROM daily_plans`)).toMatchObject({status:'ready',count:10,attempts:1});
  });
  it('regenerates only editable posts and retains revisions and media',async()=>{
