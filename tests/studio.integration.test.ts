@@ -62,6 +62,23 @@ describe('daily generation',()=>{
   for(const p of posts){expect(p).toMatchObject({status:'scheduled',plan_day:'2099-10-20'});expect(new Date(p.scheduled_at).getTime()).toBeGreaterThan(Date.now());expect(DateTime.fromJSDate(new Date(p.scheduled_at)).setZone('Europe/Kyiv').toISODate()).toBe('2099-10-20');}
   expect(await one(sql`SELECT status,count FROM daily_plans`)).toMatchObject({status:'ready',count:10});
  });
+ it.each([false,true])('repairs an unknown source URL before committing ten posts (external sources: %s)',async(hasSources)=>{
+  await rows(sql`UPDATE settings SET value=jsonb_set(value,'{dailyCount}','10')`);
+  const evidenceUrl='https://example.org/educator-study',ideaUrl='https://example.org/classroom-idea',invalidUrl='https://mimiao.example/invented-evidence';
+  if(hasSources){
+   await rows(sql`INSERT INTO trends(title,summary,angle,evidence,score,confidence,expires_at) VALUES('Тема','Опис','Питання',${JSON.stringify([{url:evidenceUrl},{url:evidenceUrl},{note:'No URL'}])}::jsonb,1,'high','2099-10-22T22:00:00+03:00')`);
+   await rows(sql`INSERT INTO ideas(text,source_url) VALUES('Ідея',${ideaUrl}),('Повтор',${evidenceUrl}),('Без джерела','')`);
+  }
+  const valid=planPosts(10),invalid=valid.map((p,i)=>({...p,sourceUrls:i===0?[invalidUrl]:[]}));
+  vi.mocked(generate).mockResolvedValueOnce({posts:invalid}).mockImplementationOnce(async()=>{expect(await rows(sql`SELECT * FROM posts`)).toHaveLength(0);return {posts:valid};});
+  expect(await prepareDay('2099-10-20')).toEqual({day:'2099-10-20',count:10});
+  expect(generate).toHaveBeenCalledTimes(2);
+  const allowedSourceUrls=hasSources?[evidenceUrl,ideaUrl]:[];
+  for(const call of vi.mocked(generate).mock.calls){expect(call[2]).toMatchObject({allowedSourceUrls});expect(call[4]).toEqual(allowedSourceUrls);}
+  const repair=vi.mocked(generate).mock.calls[1][2] as {validationErrors:string[]};
+  expect(repair.validationErrors.join(' ')).toContain('posts[0].sourceUrls');expect(repair.validationErrors.join(' ')).toContain(invalidUrl);expect(repair.validationErrors.join(' ')).toContain('allowedSourceUrls');expect(repair.validationErrors.join(' ')).toContain('[]');
+  const posts=await rows(sql`SELECT * FROM posts`);expect(posts).toHaveLength(10);expect(posts.every(p=>p.status==='scheduled'&&p.generated&&p.sources.length===0)).toBe(true);expect(await one(sql`SELECT status,count,attempts FROM daily_plans`)).toMatchObject({status:'ready',count:10,attempts:1});
+ });
  it('regenerates only editable posts and retains revisions and media',async()=>{
   await readyPlan();const media=[randomUUID()];
   const original=(await one(sql`INSERT INTO posts(text,status,scheduled_at,plan_day,slot,media_ids) VALUES('Оригінальна тема','scheduled','2099-10-20T09:00:00+03:00','2099-10-20',0,${JSON.stringify(media)}::jsonb) RETURNING *`))!;
