@@ -1,4 +1,4 @@
-import {beforeEach,describe,it,expect,vi} from 'vitest';
+import {afterEach,beforeEach,describe,it,expect,vi} from 'vitest';
 import type {Post} from '../shared/types';
 const fake=vi.hoisted(()=>({
  editor:{count:vi.fn(),fill:vi.fn(),innerText:vi.fn()},
@@ -21,6 +21,7 @@ vi.mock('../server/browser/session',()=>({
 }));
 import {publishInBrowser} from '../server/browser/publisher';
 const post={text:'Текст для перевірки',media_ids:[]} as unknown as Post;
+afterEach(()=>vi.useRealTimers());
 beforeEach(()=>{
  vi.resetAllMocks();fake.editor.count.mockResolvedValue(1);fake.editor.innerText.mockResolvedValue(post.text);
  fake.send.isEnabled.mockResolvedValue(true);fake.evaluate.mockResolvedValue([{url:'https://www.threads.com/@mimiao.crm/post/old',text:'Попередній допис',timestamp:'2025-01-01T00:00:00Z',images:0}]);
@@ -58,8 +59,10 @@ describe('browser composer preflight and sending boundary',()=>{
   expect(fake.send.click).not.toHaveBeenCalled();
  });
  it('performs the durable boundary callback before exactly one click, and does not retry on missing evidence',async()=>{
+  vi.useFakeTimers();
   const before=vi.fn(async()=>{expect(fake.send.click).not.toHaveBeenCalled();});
-  await expect(publishInBrowser(post,before)).rejects.toThrow('результат');
+  const assertion=expect(publishInBrowser(post,before)).rejects.toThrow('результат');
+  await vi.runAllTimersAsync();await assertion;
   expect(before).toHaveBeenCalledOnce();expect(fake.send.click).toHaveBeenCalledOnce();
  });
  it('does not click if pause or durable persistence blocks the boundary',async()=>{

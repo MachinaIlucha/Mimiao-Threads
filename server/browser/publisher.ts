@@ -6,7 +6,8 @@ import { config } from '../config.js';
 import { sql,one } from '../db.js';
 import { AppError } from '../errors.js';
 import { withBrowser,assertOwnAccount,setBrowserStatus } from './session.js';
-import { threadsProfile,threadsUsername,postUrl,matchingPublication,type BrowserPostEvidence } from './evidence.js';
+import { threadsProfile,threadsUsername,postUrl,type BrowserPostEvidence } from './evidence.js';
+import { waitForPublication } from './confirmation.js';
 
 // Read only rendered DOM. No private endpoints, intercepted tokens or undocumented APIs.
 export async function readProfilePosts(page:Page):Promise<BrowserPostEvidence[]>{
@@ -90,7 +91,7 @@ export async function publishInBrowser(post:Post,beforeSend:(baseline:string[],s
   await send.click({timeout:15000});
   await dialog.waitFor({state:'hidden',timeout:60000});
   await openOwnProfile(page);
-  const match=matchingPublication(await readProfilePosts(page),post.text,baseline,sentAt,files.length);
+  const match=await waitForPublication(()=>readProfilePosts(page),post.text,baseline,sentAt,files.length);
   if(!match)throw new AppError(409,'Отправка выполнена, но результат ещё не подтверждён. Повторная отправка заблокирована.');
   return match;
  });
@@ -99,7 +100,7 @@ export async function reconcileBrowser(post:Post,baseline:string[]|null,sentAt:s
  if(!baseline||!sentAt)return null;
  return withBrowser(async page=>{
   await openOwnProfile(page);
-  return matchingPublication(await readProfilePosts(page),post.text,baseline,sentAt,post.media_ids.length);
+  return waitForPublication(()=>readProfilePosts(page),post.text,baseline,sentAt,post.media_ids.length);
  });
 }
 export async function browserPublishError(){

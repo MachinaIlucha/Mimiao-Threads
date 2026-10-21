@@ -27,6 +27,10 @@ session implementation; review and test this contract before upgrading CPM.
 Camoufox fills the composer through keyboard selection, deletion and typing to
 avoid duplicated text in the rich editor. Exact-text verification remains required
 before recording the send boundary or clicking Post.
+After sending, confirmation allows up to 20 seconds for rendered post cards to
+hydrate. This repeats read-only DOM checks, never the Post click. Exact text,
+publication time, a new permalink and all attachments are still required. If no
+unique match appears, the attempt stays unknown and reconciliation checks it later.
 
 Set private `CAMOUFOX_STUDIO_KEY` (32+ characters), `CAMOUFOX_OWNER_PASSWORD`
 (16+ characters), `CAMOUFOX_SECRET_KEY` (Fernet key), and the existing eight-character
