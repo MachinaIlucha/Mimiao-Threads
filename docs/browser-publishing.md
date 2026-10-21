@@ -14,7 +14,9 @@ is saved in `/data/studio-profile-id`; deletion fails closed rather than selecti
 another profile. Other profiles in the manager are never used by Studio.
 The initial profile uses Linux to match the VPS and fixed English UI languages.
 No proxy rotation, imported browser cookies or automatic login is configured.
-The first launch leaves the browser on a blank page for the owner.
+The manager initially opens a blank page. When Studio attaches to a blank tab,
+it opens Threads before checking the signed-in account. Existing pages, including
+login and Meta checkpoints, are preserved for the owner to complete manually.
 
 `deploy/camoufox/studio_bridge.py` adds an authenticated, serialized DOM-command
 adapter to CPM. The existing TypeScript publisher still owns account checks,

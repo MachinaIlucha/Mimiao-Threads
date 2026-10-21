@@ -17,7 +17,11 @@ export async function setBrowserStatus(state:string,message:string){
  await rows(sql`INSERT INTO browser_status(id,state,message) VALUES(1,${state},${message}) ON CONFLICT(id) DO UPDATE SET state=EXCLUDED.state,message=EXCLUDED.message,checked_at=now()`);
 }
 export async function browserPage(){
- if(config.browserEngine==='camoufox')return camoufoxPage();
+ if(config.browserEngine==='camoufox'){
+  const managed=await camoufoxPage();
+  if(managed.url()==='about:blank')await managed.goto(threadsHome,{waitUntil:'domcontentloaded'});
+  return managed;
+ }
  if(!context){
   await mkdir(config.browserProfileDir,{recursive:true,mode:0o700});
   await chmod(config.browserProfileDir,0o700);
