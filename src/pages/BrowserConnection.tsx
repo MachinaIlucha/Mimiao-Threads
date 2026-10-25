@@ -11,7 +11,7 @@ export function BrowserConnection({state}:{state:any}){
   {state?.checked_at&&<p className="hint">Проверено: {time(state.checked_at)}</p>}
   <button disabled={action.isPending} onClick={()=>action.mutate({path:'/jobs/browser-check'})}><RefreshCw size={15}/>Проверить вход</button>
   <ErrorMessage error={action.error}/>
-  <p className="hint">Тексты и фотографии публикуются по расписанию. После входа проверьте состояние и снимите общую паузу. При ошибке очередь останавливается; неизвестный результат не отправляется повторно.</p>
+  <p className="hint">Тексты и фотографии публикуются по расписанию. После входа проверьте состояние и снимите общую паузу. Ошибка отдельного поста не останавливает очередь; неизвестный результат проверяется без повторной отправки.</p>
   <details><summary>Войти в браузер сервера</summary>
    <p>Браузер доступен только через защищённый SSH-туннель. Запустите на своём компьютере:</p>
    <code>ssh -N -L 6080:127.0.0.1:6080{state?.engine==='camoufox'?' -L 8000:127.0.0.1:8000':''} threads@173.242.59.9</code>

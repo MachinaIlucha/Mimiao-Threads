@@ -64,8 +64,9 @@ export async function publishDue() {
  const lock=await pool.connect();
  try {
   if(!(await lock.query('SELECT pg_try_advisory_lock(7319403) AS acquired')).rows[0].acquired)return;
-  // One unresolved delivery stops the queue; the unknown post may already be public.
-  if(await one(sql`SELECT id FROM posts WHERE status IN ('unknown','publishing') LIMIT 1`))return;
+  // Serialize active sends. Unknown results remain excluded from the scheduled
+  // queue and are reconciled separately; they must not hold unrelated posts.
+  if(await one(sql`SELECT id FROM posts WHERE status='publishing' LIMIT 1`))return;
   const post=await one<Post>(sql`SELECT * FROM posts WHERE status='scheduled' AND scheduled_at<=now() ORDER BY scheduled_at LIMIT 1`);if(!post)return;
   const previous=await one(sql`SELECT published_at FROM posts WHERE status='published' AND root_id IS NULL ORDER BY published_at DESC LIMIT 1`);
   const decision=dueDecision(post.scheduled_at!,new Date(),previous?.published_at||null);
@@ -112,10 +113,9 @@ export async function publishDue() {
    if(config.publishingMode==='browser'){
     await browserPublishError();
     if(uncertain){
-     await event('browser','warning','Результат отправки уточняется. Очередь продолжится после подтверждения, если не включена ручная пауза.');
+     await event('browser','warning','Результат этого поста уточняется без повторной отправки. Остальные посты продолжат публиковаться по расписанию.');
     }else{
-     await rows(sql`UPDATE settings SET value=jsonb_set(value,'{paused}','true') WHERE id=1`);
-     await event('browser','warning','Очередь автоматически приостановлена после ошибки браузера. Проверьте результат перед продолжением.');
+     await event('browser','warning','Этот пост требует проверки после ошибки браузера. Остальные посты продолжат публиковаться по расписанию.');
     }
    }
   }

@@ -243,7 +243,7 @@ describe('browser publishing transport',()=>{
   expect((await one(sql`SELECT * FROM posts WHERE id=${p!.id}::uuid`))).toMatchObject({status:'published',publication_method:'browser',provider_id:null,permalink:'https://www.threads.com/@mimiao.crm/post/abc'});
   expect(threads).not.toHaveBeenCalled();
  });
- it('rechecks pause before the browser click and pauses on preflight failure',async()=>{
+ it('preserves a manual pause made before the browser click',async()=>{
   config.publishingMode='browser';await due();
   vi.mocked(publishInBrowser).mockImplementation(async(_post,beforeSend)=>{
    await rows(sql`UPDATE settings SET value=jsonb_set(value,'{paused}','true')`);
@@ -253,31 +253,29 @@ describe('browser publishing transport',()=>{
   expect((await one(sql`SELECT status FROM posts`))!.status).toBe('blocked');
   expect((await one(sql`SELECT phase FROM publish_attempts`))!.phase).toBe('failed');
  });
- it('never retries an uncertain browser click, blocks the queue, and reconciles read-only',async()=>{
+ it('continues other posts while an uncertain browser send is reconciled without resending',async()=>{
   config.publishingMode='browser';const p=await due();
   vi.mocked(publishInBrowser).mockImplementation(async(_post,beforeSend)=>{await beforeSend([],new Date().toISOString());throw new Error('browser closed after click');});
   await publishDue();
   expect((await one(sql`SELECT status FROM posts WHERE id=${p!.id}::uuid`))!.status).toBe('unknown');
   expect((await one(sql`SELECT value FROM settings`))!.value.paused).toBe(false);
   const next=await due();
-  await publishDue();expect(publishInBrowser).toHaveBeenCalledTimes(1);
+  await rows(sql`UPDATE posts SET text=${texts[1]} WHERE id=${next!.id}::uuid`);
   vi.mocked(reconcileBrowser).mockResolvedValue(null);
-  await reconcile();await publishDue();
-  expect(publishInBrowser).toHaveBeenCalledTimes(1);
-  expect((await one(sql`SELECT status FROM posts WHERE id=${next!.id}::uuid`))!.status).toBe('scheduled');
-  vi.mocked(reconcileBrowser).mockResolvedValue({url:'https://www.threads.com/@mimiao.crm/post/abc',timestamp:new Date().toISOString(),text:p!.text,images:0});
-  await reconcile();expect(reconcileBrowser).toHaveBeenCalledTimes(2);
-  expect((await one(sql`SELECT status FROM posts WHERE id=${p!.id}::uuid`))!.status).toBe('published');
+  await reconcile();
   vi.mocked(publishInBrowser).mockImplementation(async(post,beforeSend)=>{
    await beforeSend([],new Date().toISOString());
    return {url:'https://www.threads.com/@mimiao.crm/post/next',timestamp:new Date().toISOString(),text:post.text,images:0};
   });
-  await publishDue();
+  await publishDue();await publishDue();
   expect((await one(sql`SELECT status FROM posts WHERE id=${next!.id}::uuid`))!.status).toBe('published');
-  expect(publishInBrowser).toHaveBeenCalledTimes(2);
+  expect((await one(sql`SELECT status FROM posts WHERE id=${p!.id}::uuid`))!.status).toBe('unknown');
   expect(vi.mocked(publishInBrowser).mock.calls.map(([post])=>post.id)).toEqual([p!.id,next!.id]);
+  vi.mocked(reconcileBrowser).mockResolvedValue({url:'https://www.threads.com/@mimiao.crm/post/abc',timestamp:new Date().toISOString(),text:p!.text,images:0});
+  await reconcile();
+  expect((await one(sql`SELECT status FROM posts WHERE id=${p!.id}::uuid`))!.status).toBe('published');
   expect(await rows(sql`SELECT id FROM publish_attempts WHERE post_id=${p!.id}::uuid`)).toHaveLength(1);
-  expect(threads).not.toHaveBeenCalled();
+  expect(publishInBrowser).toHaveBeenCalledTimes(2);
  });
  it('preserves an owner pause after an uncertain send is reconciled',async()=>{
   config.publishingMode='browser';const p=await due();
@@ -294,15 +292,22 @@ describe('browser publishing transport',()=>{
   expect(publishInBrowser).toHaveBeenCalledTimes(1);
   expect(await rows(sql`SELECT id FROM publish_attempts WHERE post_id=${p!.id}::uuid`)).toHaveLength(1);
  });
- it('pauses the queue on a known browser failure before the sending boundary',async()=>{
+ it('isolates a known browser failure and publishes the next scheduled post',async()=>{
   config.publishingMode='browser';const p=await due();
   vi.mocked(publishInBrowser).mockRejectedValue(new Error('browser preflight failed'));
   await publishDue();
   expect((await one(sql`SELECT status FROM posts WHERE id=${p!.id}::uuid`))!.status).toBe('blocked');
-  expect((await one(sql`SELECT value FROM settings`))!.value.paused).toBe(true);
+  expect((await one(sql`SELECT value FROM settings`))!.value.paused).toBe(false);
   expect((await one(sql`SELECT phase,sending_at FROM publish_attempts WHERE post_id=${p!.id}::uuid`))).toMatchObject({phase:'failed',sending_at:null});
-  await due();await publishDue();
-  expect(publishInBrowser).toHaveBeenCalledTimes(1);
+  const next=await due();
+  vi.mocked(publishInBrowser).mockImplementation(async(post,beforeSend)=>{
+   await beforeSend([],new Date().toISOString());
+   return {url:'https://www.threads.com/@mimiao.crm/post/next',timestamp:new Date().toISOString(),text:post.text,images:0};
+  });
+  await publishDue();await publishDue();
+  expect((await one(sql`SELECT status FROM posts WHERE id=${next!.id}::uuid`))!.status).toBe('published');
+  expect(vi.mocked(publishInBrowser).mock.calls.map(([post])=>post.id)).toEqual([p!.id,next!.id]);
+  expect(await rows(sql`SELECT id FROM publish_attempts WHERE post_id=${p!.id}::uuid`)).toHaveLength(1);
  });
  it('never launches a browser for a disabled publisher',async()=>{
   config.publishingMode='browser';config.livePublishing=false;await due();await publishDue();expect(publishInBrowser).not.toHaveBeenCalled();
