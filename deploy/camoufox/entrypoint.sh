@@ -7,6 +7,10 @@ if [ "${#BROWSER_DESKTOP_PASSWORD}" -ne 8 ]; then
 fi
 x11vnc -storepasswd "$BROWSER_DESKTOP_PASSWORD" /tmp/studio-vnc-password >/dev/null 2>&1
 unset BROWSER_DESKTOP_PASSWORD
+# A container restart preserves /tmp even though the old X server has exited.
+if [ -e /tmp/.X99-lock ] && ! xdpyinfo -display :99 >/dev/null 2>&1; then
+  rm -f /tmp/.X99-lock /tmp/.X11-unix/X99
+fi
 Xvfb :99 -screen 0 1280x900x24 -nolisten tcp &
 xvfb_pid=$!
 attempt=0

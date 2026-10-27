@@ -39,19 +39,21 @@ class BridgeTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(HTTPException):
             await bridge.execute(object(), bridge.Command(method="close"))
 
-    async def test_fill_replaces_rich_editor_text_using_keyboard_events(self):
-        target = SimpleNamespace(click=AsyncMock(), press=AsyncMock(), press_sequentially=AsyncMock(), fill=AsyncMock())
-        calls = Mock()
-        for name in ("click", "press", "press_sequentially", "fill"):
-            calls.attach_mock(getattr(target, name), name)
+    async def test_fill_corrects_only_proven_duplicate_unicode(self):
+        target = SimpleNamespace(click=AsyncMock(), press=AsyncMock(), press_sequentially=AsyncMock(),
+                                 inner_text=AsyncMock(side_effect=["First \U0001f642\U0001f642", "First \U0001f642", "First \U0001f642\n\nSecond \U0001f49c"]))
         page = SimpleNamespace(get_by_role=Mock(return_value=target))
-        text = "Що допомагає групі?\nНовий рядок 💜"
+        text = "First \U0001f642\n\nSecond \U0001f49c"
         await bridge.execute(page, bridge.Command(method="fill", args=[text], steps=[{"method":"get_by_role","args":["textbox"]}]))
-        self.assertEqual([call[0] for call in calls.mock_calls], ["click", "press", "press", "press_sequentially"])
-        self.assertEqual(target.press.await_args_list[0].args, ("ControlOrMeta+A",))
-        self.assertEqual(target.press.await_args_list[1].args, ("Backspace",))
-        target.press_sequentially.assert_awaited_once_with(text)
-        target.fill.assert_not_called()
+        self.assertEqual([c.args[0] for c in target.press.await_args_list], ["ControlOrMeta+A", "Backspace", "Backspace"])
+        self.assertEqual([c.args[0] for c in target.press_sequentially.await_args_list], ["First ", "\U0001f642", "\n\nSecond ", "\U0001f49c"])
+
+    async def test_fill_rejects_unexpected_unicode_mutations(self):
+        target = SimpleNamespace(click=AsyncMock(), press=AsyncMock(), press_sequentially=AsyncMock(), inner_text=AsyncMock(return_value="wrong"))
+        page = SimpleNamespace(get_by_role=Mock(return_value=target))
+        with self.assertRaises(HTTPException):
+            await bridge.execute(page, bridge.Command(method="fill", args=["\U0001f642"], steps=[{"method":"get_by_role","args":["textbox"]}]))
+        self.assertEqual(target.press.await_count, 2)
 
     async def test_lost_click_is_not_retried_and_error_text_is_private(self):
         page = SimpleNamespace(url="https://www.threads.com/")

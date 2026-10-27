@@ -156,7 +156,22 @@ async def execute(page, command):
         await target.click()
         await target.press("ControlOrMeta+A")
         await target.press("Backspace")
-        await target.press_sequentially(args[0])
+        # Camoufox/Gecko may insert supplementary characters twice. Type BMP
+        # runs normally, then verify each supplementary character and remove
+        # only a proven extra copy. The publisher still checks the full text.
+        expected = ""
+        for chunk in re.split(r"([\U00010000-\U0010ffff])", args[0].replace("\r\n", "\n")):
+            if not chunk:
+                continue
+            await target.press_sequentially(chunk)
+            expected += chunk
+            if len(chunk) == 1 and ord(chunk) > 0xffff:
+                actual = (await target.inner_text()).replace("\r\n", "\n").strip()
+                if actual == (expected + chunk).strip():
+                    await target.press("Backspace")
+                    actual = (await target.inner_text()).replace("\r\n", "\n").strip()
+                if actual != expected.strip():
+                    raise HTTPException(409, "Editor text differs after Unicode entry")
     elif method == "set_input_files" and command.steps:
         await target.set_input_files(media_files(args[0]))
     elif method in {"evaluate", "evaluate_all"}:

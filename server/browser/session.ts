@@ -6,6 +6,7 @@ import { AppError } from '../errors.js';
 import { threadsHome,threadsUsername } from './evidence.js';
 import {camoufoxPage} from './camoufox.js';
 
+import { serializeBrowser } from './serial.js';
 let context:BrowserContext|undefined,page:Page|undefined,busy=false;
 export async function browserStatus(){
  const status=await one(sql`SELECT state,message,checked_at FROM browser_status WHERE id=1`);
@@ -39,8 +40,9 @@ export async function browserPage(){
  return page;
 }
 export async function withBrowser<T>(task:(page:Page)=>Promise<T>):Promise<T>{
- if(busy)throw new AppError(409,'Браузер занят другой операцией');
- busy=true;try{return await task(await browserPage());}finally{busy=false;}
+ return serializeBrowser(async()=>{
+  busy=true;try{return await task(await browserPage());}finally{busy=false;}
+ });
 }
 export async function assertOwnAccount(p:Page){
  const url=new URL(p.url());
