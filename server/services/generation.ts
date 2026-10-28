@@ -47,7 +47,7 @@ export async function prepareDay(day=tomorrow(),options:{regenerate?:boolean}={}
     if(diversityErrors.length)throw new AppError(502,diversityErrors.join(' '),'GENERATION_INVALID');
     const texts=history.map(p=>p.text);let ctas=0;
     for(const [index,p] of result.posts.entries()){
-     const errors=[...checkText(p.text,s,texts).map(error=>`posts[${index}].text (${p.topic}): ${error}`),...checkText(p.alternative,s,history.map(h=>h.text)).map(error=>`posts[${index}].alternative (${p.topic}): ${error}`)];if(!p.verified||p.concerns.length)errors.push(`posts[${index}]: Есть неподтверждённые утверждения`);
+     const errors=[...checkText(p.text,s,texts).map(error=>`posts[${index}].text (${p.topic}): ${error}`),...checkText(p.alternative,s,history.map(h=>h.text)).map(error=>`posts[${index}].alternative (${p.topic}): ${error}`)];if(!p.verified||p.concerns.length)errors.push(`posts[${index}]: Есть неподтверждённые утверждения: ${p.concerns.join('; ') || 'verified=false; replace with a proposed template or question without factual claims'}`);
      if(p.trendId&&!trends.some(t=>t.id===p.trendId))errors.push('Неизвестный источник темы');
      const invalidUrls=p.sourceUrls.filter(url=>!allowedSourceUrls.includes(url));
      if(invalidUrls.length)errors.push(`posts[${index}].sourceUrls: Неизвестная ссылка ${invalidUrls.slice(0,3).map(url=>url.slice(0,250)).join(', ')}. Use exact allowedSourceUrls entries or [] if there is no external factual claim`);
