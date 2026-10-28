@@ -11,7 +11,7 @@ export function Analytics() {
   const { data, error, isPending } = useData("/analytics"),
     action = useAction();
   const [selected, setSelected] = useState<Post>(),
-    [window, setWindow] = useState("24h");
+    [window, setWindow] = useState("current");
   const account = data?.account || [],
     latest = account[0],
     previous = account[1];
@@ -26,7 +26,7 @@ export function Analytics() {
       post: p,
       metric: metrics.find(
         (m) =>
-          m.post_id === p.id && m.checkpoint === window && m.source === "api",
+          m.post_id === p.id && m.checkpoint === window && ["api", "browser"].includes(m.source),
       ),
       manual: metrics.find(
         (m) =>
@@ -77,12 +77,12 @@ export function Analytics() {
             <div>
               <span className="eyebrow">ИСТОРИЯ НАБЛЮДЕНИЙ</span>
               <strong>
-                {account.length}
+                {new Set(metrics.map(m => m.measured_at.slice(0,10))).size}
                 <span> дней</span>
               </strong>
               <p>
                 Последний замер:{" "}
-                {latest ? time(latest.measured_at) : "ещё не получен"}
+                {metrics[0] ? time(metrics[0].measured_at) : "ещё не получен"}
               </p>
             </div>
           </div>
@@ -93,22 +93,20 @@ export function Analytics() {
             <div className="section-bar">
               <h3>Публикации и замеры</h3>
               <div className="tabs">
-                {["1h", "24h", "72h", "7d", "import", "manual"].map((v) => (
+                {["current", "1h", "24h", "72h", "7d", "import", "manual"].map((v) => (
                   <button
                     className={window === v ? "selected" : ""}
                     key={v}
                     onClick={() => setWindow(v)}
                   >
-                    {v === "import" ? "Импорт" : v === "manual" ? "Ручные" : v}
+                    {v === "current" ? "Последние" : v === "import" ? "Импорт" : v === "manual" ? "Ручные" : v}
                   </button>
                 ))}
               </div>
             </div>
             {!measured.length ? (
               <Empty title="Пока недостаточно измерений">
-                После подключения импортируйте историю. Новые посты получат
-                замеры через 1, 24, 72 часа и 7 дней. Исторические данные
-                сохраняются отдельно.
+                Нажмите «Обновить», чтобы собрать доступные показатели. Браузерные замеры появятся во вкладке «Последние». Замеры 1, 24, 72 часа и 7 дней сохраняются только в соответствующем возрасте поста.
               </Empty>
             ) : (
               <div className="table-scroll">
@@ -139,10 +137,10 @@ export function Analytics() {
                         <td>{number(m?.views ?? manual?.views)}</td>
                         <td>{number(m?.replies)}</td>
                         <td>{number(p.meaningful_count)}</td>
-                        <td>{number(manual?.follows)}</td>
-                        <td>{number(manual?.profile_visits)}</td>
+                        <td>{number(m?.follows ?? manual?.follows)}</td>
+                        <td>{number(m?.profile_visits ?? manual?.profile_visits)}</td>
                         <td>
-                          {m ? `${Math.round(m.age_hours)} ч` : "ручной"}
+                          {m ? `${Math.round(m.age_hours)} ч · ${m.source === "browser" ? "браузер" : "API"}` : "ручной"}
                           <ArrowUpRight size={13} />
                         </td>
                       </tr>
@@ -152,7 +150,7 @@ export function Analytics() {
               </div>
             )}
             <p className="table-caption">
-              * Ручные данные из Threads. ** Собранные и классифицированные
+              * Данные из видимой статистики Threads или ручного ввода. ** Собранные и классифицированные
               ответы за всё время, не все возможные комментарии. «—» означает
               отсутствие данных. Нажмите на пост, чтобы добавить замер.
             </p>
@@ -160,7 +158,7 @@ export function Analytics() {
           <section className="cohorts">
             <h2>Какие рубрики работают</h2>
             <p className="muted">
-              Только API-замеры в возрасте 24–28 часов. Медиана устойчивее к
+              Замеры в возрасте 24–28 часов, отдельно по источникам. Медиана устойчивее к
               одному случайному всплеску.
             </p>
             {!data?.groups?.length ? (
@@ -180,8 +178,8 @@ export function Analytics() {
                   </thead>
                   <tbody>
                     {data.groups.map((g: any) => (
-                      <tr key={g.category}>
-                        <td>{labels[g.category]}</td>
+                      <tr key={`${g.category}-${g.source}`}>
+                        <td>{labels[g.category]} · {g.source === "browser" ? "браузер" : "API"}</td>
                         <td>
                           {g.count}
                           {g.count < 10 ? " · малая выборка" : ""}

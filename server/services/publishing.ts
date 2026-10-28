@@ -9,7 +9,7 @@ import { settings, event } from './state.js';
 import { dueDecision } from '../domain/schedule.js';
 import { checkText } from '../domain/editorial.js';
 import type { Post } from '../../shared/types.js';
-import { publishInBrowser,reconcileBrowser,browserPublishError } from '../browser/publisher.js';
+import { publishInBrowser,reconcileBrowserBatch,browserPublishError } from '../browser/publisher.js';
 import type { BrowserPostEvidence } from '../browser/evidence.js';
 export function mediaUrl(id:string) { const expires=Math.floor(Date.now()/1000)+86400;return `${config.publicUrl}/media/${id}?expires=${expires}&signature=${mediaSignature(id,expires)}`; }
 async function createContainer(post:Post) {
@@ -40,14 +40,23 @@ async function browserPublished(postId:string,attemptId:string,result:BrowserPos
 }
 export async function reconcile() {
  await rows(sql`UPDATE posts SET status='unknown',error='Worker остановился во время отправки. Выполняется сверка.' WHERE status='publishing' AND updated_at<now()-interval '10 minutes'`);
- const unknown=await rows<Post>(sql`SELECT * FROM posts WHERE status='unknown' LIMIT 10`);
+ // Recent sends must not starve behind unresolved historical attempts.
+ const unknown=await rows<Post>(sql`SELECT * FROM posts WHERE status='unknown' ORDER BY updated_at ASC LIMIT 10`);
+ const pending=[];
+ for(const post of unknown){
+  const attempt=await one(sql`SELECT * FROM publish_attempts WHERE post_id=${post.id}::uuid ORDER BY started_at DESC LIMIT 1`);
+  if(attempt?.transport==='browser')pending.push({post,attempt,baseline:attempt.browser_baseline,sentAt:attempt.sending_at});
+ }
+ if(config.publishingMode==='browser'&&pending.length){
+  try{
+   const results=await reconcileBrowserBatch(pending);
+   for(const entry of pending){const result=results.get(entry.post.id);if(result)await browserPublished(entry.post.id,entry.attempt.id,result);}
+  }catch(error){await event('reconcile','warning',safeMessage(error));}
+  for(const {post} of pending)await rows(sql`UPDATE posts SET updated_at=now() WHERE id=${post.id}::uuid AND status='unknown'`);
+ }
  for(const post of unknown){
   const attempt=await one(sql`SELECT * FROM publish_attempts WHERE post_id=${post.id}::uuid ORDER BY started_at DESC LIMIT 1`);if(!attempt)continue;
   if(attempt.transport==='browser'){
-   if(config.publishingMode==='browser'){
-    const result=await reconcileBrowser(post,attempt.browser_baseline,attempt.sending_at);
-    if(result)await browserPublished(post.id,attempt.id,result);
-   }
    continue;
   }
   // Only read provider state. Never resend an ambiguous publish request.

@@ -179,7 +179,7 @@ export function ScheduleSummary({
       <div className="summary-note">
         <Clock3 size={17} />
         <p>
-          Время публикаций выбирается автоматически. Сегодня интервалы могут сокращаться, чтобы весь план поместился в день.
+          Время публикаций выбирается автоматически. Между отправками сохраняется минимум 90 минут.
         </p>
       </div>
       <button className="summary-action" onClick={onCreate}>

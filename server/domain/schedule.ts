@@ -5,9 +5,9 @@ export const checkpointHours = { '1h':1, '24h':24, '72h':72, '7d':168 } as const
 export function tomorrow(now = new Date()) { return DateTime.fromJSDate(now,{zone:ZONE}).plus({days:1}).toISODate()!; }
 export function today(now = new Date()) { return DateTime.fromJSDate(now,{zone:ZONE}).toISODate()!; }
 export function slotsFor(day: string, count=10, rankedHours: number[] = []): string[] {
- if (!Number.isInteger(count) || count<5 || count>10) throw new AppError(400,'Daily count must be 5–10');
+ if (!Number.isInteger(count) || count<1 || count>10) throw new AppError(400,'Daily count must be 1–10');
  const chosen: number[]=[];
- const defaults = count===5 ? [9,12,15,18,21] : Array.from({length:count},(_,i)=>9+i*1.5);
+ const defaults = count<=4 ? ({1:[18],2:[12,21],3:[10,16,21],4:[9,13,17,21]}[count]!) : count===5 ? [9,12,15,18,21] : Array.from({length:count},(_,i)=>9+i*1.5);
  for (const hour of [...rankedHours, ...defaults, ...Array.from({length:31},(_,i)=>8+i/2)]) {
   if (!Number.isFinite(hour) || hour<8 || hour>23 || chosen.some(h=>Math.abs(h-hour)<1.5)) continue;
   chosen.push(hour); if (chosen.length===count) break;
@@ -28,20 +28,23 @@ export function availableSlotsFor(day:string,count:number,occupied:string[]=[],n
   const iso=DateTime.fromISO(value,{setZone:true});
   return (iso.isValid?iso:DateTime.fromSQL(value,{setZone:true})).toMillis();
  }).filter(Number.isFinite);
- const free=(timestamp:number)=>reserved.every(value=>Math.abs(value-timestamp)>=60_000);
- if(count>=5){
+ const free=(timestamp:number)=>reserved.every(value=>Math.abs(value-timestamp)>=90*60_000);
+ {
   const defaults=slotsFor(day,count,rankedHours);
   if(defaults.every(value=>{const timestamp=DateTime.fromISO(value).toMillis();return timestamp>=start&&free(timestamp);}))return defaults;
  }
  const candidates:number[]=[];
- for(let instant=start;instant<=end;instant+=60_000)if(free(instant))candidates.push(instant);
- if(candidates.length<count)throw new AppError(409,isToday?'Сегодня уже недостаточно времени для всех постов. Выберите завтра.':'На выбранный день уже недостаточно времени для всех постов.');
+ for(let instant=start;instant<=end;instant+=60_000){
+  if(free(instant)&&(!candidates.length||instant-candidates[candidates.length-1]>=90*60_000))candidates.push(instant);
+ }
+ if(candidates.length<count)throw new AppError(409,'Недостаточно времени для постов с интервалом 90 минут. Уменьшите число постов или выберите завтра.');
  return Array.from({length:count},(_,i)=>DateTime.fromMillis(candidates[count===1?0:Math.round(i*(candidates.length-1)/(count-1))],{zone:'utc'}).toISO()!);
 }
 export function dueDecision(scheduled: string, now: Date, previousPublished: string|null) {
  const late = now.getTime()-new Date(scheduled).getTime();
  if(late<0) return 'wait';
  if(late>30*60_000) return 'missed';
+ if(previousPublished && now.getTime()-Date.parse(previousPublished)<90*60_000)return 'wait';
  return 'publish';
 }
 export function eligibleCheckpoint(age: number, checkpoint: string) { return checkpoint in checkpointHours && age >= checkpointHours[checkpoint as keyof typeof checkpointHours]; }

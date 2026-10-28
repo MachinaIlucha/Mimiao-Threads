@@ -6,7 +6,7 @@ import { config } from '../config.js';
 import { sql,one } from '../db.js';
 import { AppError } from '../errors.js';
 import { withBrowser,assertOwnAccount,setBrowserStatus } from './session.js';
-import { threadsProfile,threadsUsername,postUrl,type BrowserPostEvidence } from './evidence.js';
+import { threadsProfile,threadsUsername,postUrl,matchingPublication,type BrowserPostEvidence } from './evidence.js';
 import { waitForPublication } from './confirmation.js';
 
 // Read only rendered DOM. No private endpoints, intercepted tokens or undocumented APIs.
@@ -25,7 +25,8 @@ export async function readProfilePosts(page:Page):Promise<BrowserPostEvidence[]>
    const time=link.querySelector('time[datetime]');if(!time)continue;
    let card:HTMLElement|null=link.parentElement;
    for(let depth=0;card&&depth<12;depth++,card=card.parentElement){
-    const links=new Set(Array.from(card.querySelectorAll<HTMLAnchorElement>('a[href*="/post/"]')).map(a=>a.pathname));
+    // A photo's /media link belongs to the same post, not a quoted/adjacent post.
+    const links=new Set(Array.from(card.querySelectorAll<HTMLAnchorElement>('a[href*="/post/"]')).map(a=>a.pathname.replace(/\/media\/?$/,'')));
     if(links.size>1)break;
     // The smallest post container with its actions excludes surrounding feed and quoted posts.
     if(!Array.from(card.querySelectorAll('[role="button"],button')).some(b=>/^(Like|Unlike|Нравится|Не нравится|Подобається|Не подобається)/.test(b.getAttribute('aria-label')||b.textContent||'')))continue;
@@ -50,7 +51,7 @@ async function attachments(ids:string[]){
  }
  return files;
 }
-async function openOwnProfile(page:Page){
+export async function openOwnProfile(page:Page){
  await page.goto(threadsProfile,{waitUntil:'domcontentloaded'});
  await assertOwnAccount(page);
  await page.getByRole('button',{name:/^Edit profile$|^Редактировать профиль$|^Редагувати профіль$/}).waitFor();
@@ -101,6 +102,29 @@ export async function reconcileBrowser(post:Post,baseline:string[]|null,sentAt:s
  return withBrowser(async page=>{
   await openOwnProfile(page);
   return waitForPublication(()=>readProfilePosts(page),post.text,baseline,sentAt,post.media_ids.length);
+ });
+}
+export async function reconcileBrowserBatch(attempts:{post:Post;baseline:string[]|null;sentAt:string|null}[]) {
+ return withBrowser(async page=>{
+  await openOwnProfile(page);
+  const seen=new Map<string,BrowserPostEvidence>();
+  // Older pending attempts may be below the initially hydrated profile cards.
+  // Gather once for the entire batch; no composer or Post click is involved.
+  for(let round=0;round<12;round++){
+   for(const item of await readProfilePosts(page))seen.set(item.url,item);
+   await page.evaluate(()=>{
+    const links=Array.from(document.querySelectorAll('a[href*="/@mimiao.crm/post/"]')).filter(a=>a.querySelector('time[datetime]'));
+    links.at(-1)?.scrollIntoView({block:'end'});
+   });
+   await new Promise(resolve=>setTimeout(resolve,750));
+  }
+  const results=new Map<string,BrowserPostEvidence>();
+  for(const {post,baseline,sentAt} of attempts){
+   if(!baseline||!sentAt)continue;
+   const match=matchingPublication([...seen.values()],post.text,baseline,sentAt,post.media_ids.length);
+   if(match)results.set(post.id,match);
+  }
+  return results;
  });
 }
 export async function browserPublishError(){

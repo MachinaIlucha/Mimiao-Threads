@@ -11,7 +11,7 @@ import { AppError } from '../errors.js';
 import { checkText } from '../domain/editorial.js';
 import { resolvePublication } from '../services/resolution.js';
 const idOf=(params:unknown)=>z.object({id:z.string().uuid()}).parse(params).id;
-const settingsSchema=z.object({paused:z.boolean(),model:z.string().regex(/^deepseek-[a-z0-9-]+$/),timezone:z.literal('Europe/Kyiv'),keywords:z.array(z.string().min(1).max(128)).max(30),profiles:z.array(z.string().regex(/^[\w.]{1,50}$/)).max(50),knowledge:z.string().max(30000),voice:z.string().max(10000),forbidden:z.array(z.string().min(1).max(300)).max(100),preferred:z.array(z.string().max(300)).max(100),dailyCount:z.number().int().min(5).max(10),adaptive:z.boolean(),researchEnabled:z.boolean()});
+const settingsSchema=z.object({paused:z.boolean(),model:z.string().regex(/^deepseek-[a-z0-9-]+$/),timezone:z.literal('Europe/Kyiv'),keywords:z.array(z.string().min(1).max(128)).max(30),profiles:z.array(z.string().regex(/^[\w.]{1,50}$/)).max(50),knowledge:z.string().max(30000),voice:z.string().max(10000),forbidden:z.array(z.string().min(1).max(300)).max(100),preferred:z.array(z.string().max(300)).max(100),dailyCount:z.number().int().min(1).max(10),adaptive:z.boolean(),researchEnabled:z.boolean()});
 function csvCell(value:unknown){const str=value===null||value===undefined?'':String(value);return '"'+(/^[=+\-@\t\r]/.test(str)?"'":'')+str.replaceAll('"','""')+'"';}
 export async function apiRoutes(app:FastifyInstance){
  app.get('/api/settings',settings);

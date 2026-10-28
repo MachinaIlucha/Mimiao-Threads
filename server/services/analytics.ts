@@ -3,6 +3,8 @@ import { threads, paged, mediaFields, connection } from '../providers/threads.js
 import { nullableMetric } from '../domain/editorial.js';
 import { checkpointHours, today } from '../domain/schedule.js';
 import { heartbeat, event } from './state.js';
+import { config } from '../config.js';
+import { readPostInsights, browserCheckpoint } from '../browser/insights.js';
 const metricNames=['views','likes','replies','reposts','quotes','shares'] as const;
 export async function importHistory() {
  if(!await connection())return;
@@ -15,7 +17,10 @@ export async function importHistory() {
  }await heartbeat('history');await event('history','success','Доступная история импортирована; прошлые замеры 24/72 часа не восстановлены');
 }
 export async function collectMetrics() {
- if(!await connection())return;
+ if(!await connection()){
+  if(config.publishingMode==='browser')await collectBrowserMetrics();
+  return;
+ }
  const posts=await rows(sql`SELECT * FROM posts WHERE status='published' AND provider_id IS NOT NULL AND published_at>now()-interval '100 days' ORDER BY published_at DESC LIMIT 1000`);
  for(const p of posts){
   const age=(Date.now()-Date.parse(p.published_at))/3600_000;
@@ -34,11 +39,40 @@ export async function collectMetrics() {
  await rows(sql`INSERT INTO account_metrics(day,followers,profile_views,clicks) VALUES(${today()},${followers},${views},${JSON.stringify(clicks)}::jsonb) ON CONFLICT(day) DO UPDATE SET followers=COALESCE(EXCLUDED.followers,account_metrics.followers),profile_views=COALESCE(EXCLUDED.profile_views,account_metrics.profile_views),clicks=COALESCE(EXCLUDED.clicks,account_metrics.clicks),measured_at=now()`);
  await heartbeat('metrics');
 }
+export async function collectBrowserMetrics() {
+ // Bounded batches release the browser between posts. Old missing observations
+ // cannot prevent newer posts from getting their age-specific checkpoint.
+ const posts=await rows(sql`SELECT p.* FROM posts p LEFT JOIN metrics m ON m.post_id=p.id AND m.source='browser' AND m.checkpoint='current'
+  WHERE p.status='published' AND p.permalink IS NOT NULL AND p.root_id IS NULL AND p.published_at>now()-interval '30 days'
+  AND (m.id IS NULL OR m.measured_at<now()-interval '1 hour')
+  ORDER BY (p.published_at>now()-interval '28 hours') DESC,m.measured_at ASC NULLS FIRST,p.published_at DESC LIMIT 8`);
+ let collected=0;
+ for(const p of posts){
+  try{
+   const value=await readPostInsights(p.permalink);
+   const age=(Date.now()-Date.parse(p.published_at))/3600_000;
+   const raw=JSON.stringify({permalink:p.permalink,source:'visible Threads post insights',...value});
+   await rows(sql`INSERT INTO metrics(post_id,checkpoint,source,age_hours,views,profile_visits,follows,raw)
+    VALUES(${p.id}::uuid,'current','browser',${age},${value.views},${value.profile_visits},${value.follows},${raw}::jsonb)
+    ON CONFLICT(post_id,checkpoint,source) DO UPDATE SET measured_at=now(),age_hours=EXCLUDED.age_hours,views=EXCLUDED.views,profile_visits=EXCLUDED.profile_visits,follows=EXCLUDED.follows,raw=EXCLUDED.raw`);
+   const checkpoint=browserCheckpoint(age);
+   if(checkpoint)await rows(sql`INSERT INTO metrics(post_id,checkpoint,source,age_hours,views,profile_visits,follows,raw)
+    VALUES(${p.id}::uuid,${checkpoint},'browser',${age},${value.views},${value.profile_visits},${value.follows},${raw}::jsonb) ON CONFLICT DO NOTHING`);
+   collected++;
+  }catch{
+   await event('metrics.post','warning','Точные показатели в браузере недоступны. Нулевые значения не подставлены.',{postId:p.id});
+   // A login/layout problem must not hold the browser for eight full timeouts.
+   break;
+  }
+ }
+ if(collected)await event('metrics','success',`Собраны браузерные замеры: ${collected}`);
+ await heartbeat('metrics');
+}
 export async function analyticsData() {
  const [posts,metrics,account,reports,experiments,groups]=await Promise.all([
   rows(sql`SELECT p.*,(SELECT count(*)::int FROM replies r WHERE r.post_id=p.id AND r.meaningful AND r.kind='incoming') AS meaningful_count FROM posts p WHERE status='published' ORDER BY published_at DESC LIMIT 1000`),
   rows(sql`SELECT * FROM metrics ORDER BY measured_at DESC LIMIT 10000`),rows(sql`SELECT * FROM account_metrics ORDER BY day DESC LIMIT 120`),
   rows(sql`SELECT * FROM reports ORDER BY week DESC LIMIT 12`),rows(sql`SELECT * FROM experiments ORDER BY created_at DESC LIMIT 12`),
-  rows(sql`SELECT p.category,count(*)::int AS count,percentile_cont(0.5) WITHIN GROUP(ORDER BY m.views) AS median_views,avg(m.replies) AS average_replies FROM posts p JOIN metrics m ON m.post_id=p.id WHERE m.checkpoint='24h' AND m.source='api' AND m.age_hours BETWEEN 24 AND 28 AND p.root_id IS NULL GROUP BY p.category`)
+  rows(sql`SELECT p.category,m.source,count(*)::int AS count,percentile_cont(0.5) WITHIN GROUP(ORDER BY m.views) AS median_views,avg(m.replies) AS average_replies FROM posts p JOIN metrics m ON m.post_id=p.id WHERE m.checkpoint='24h' AND m.source IN ('api','browser') AND m.age_hours BETWEEN 24 AND 28 AND p.root_id IS NULL GROUP BY p.category,m.source`)
  ]);return {posts,metrics,account,reports,experiments,groups};
 }

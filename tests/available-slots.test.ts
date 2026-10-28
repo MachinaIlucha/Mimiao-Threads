@@ -4,16 +4,11 @@ import { availableSlotsFor } from '../server/domain/schedule';
 const zone='Europe/Kyiv';
 const now=new Date('2026-10-21T18:00:00Z');
 describe('available plan slots',()=>{
- it('compresses ten posts into the remaining Kyiv day',()=>{
-  const slots=availableSlotsFor('2026-10-21',10,[],now);
-  expect(slots).toHaveLength(10);expect(new Set(slots).size).toBe(10);
-  const times=slots.map(value=>DateTime.fromISO(value).setZone(zone));
-  expect(times.every(value=>value.toISODate()==='2026-10-21')).toBe(true);
-  expect(times[0].toFormat('HH:mm')).toBe('21:05');
-  expect(times.every(value=>value.toMillis()>now.getTime())).toBe(true);
-  const gaps=times.slice(1).map((value,i)=>value.toMillis()-times[i].toMillis());
-  expect(gaps.every(value=>value>=60_000)).toBe(true);
-  expect(gaps.some(value=>value<90*60_000)).toBe(true);
+ it('refuses to compress a full plan into the evening',()=>{
+  expect(()=>availableSlotsFor('2026-10-21',10,[],now)).toThrow('90 минут');
+ });
+ it('spaces a three-post future plan across the day',()=>{
+  expect(availableSlotsFor('2026-10-22',3,[],now).map(value=>DateTime.fromISO(value).setZone(zone).toFormat('HH:mm'))).toEqual(['10:00','16:00','21:00']);
  });
  it('uses ten default slots for tomorrow',()=>{
   const times=availableSlotsFor('2026-10-22',10,[],now).map(value=>DateTime.fromISO(value).setZone(zone).toFormat('HH:mm'));
@@ -23,10 +18,10 @@ describe('available plan slots',()=>{
   const hours=availableSlotsFor('2026-10-22',5,[],now,[8,11,14,17,20]).map(value=>DateTime.fromISO(value).setZone(zone).hour);
   expect(hours).toEqual([8,11,14,17,20]);
  });
- it('keeps occupied instants at least a minute away',()=>{
+ it('keeps occupied posts at least ninety minutes away',()=>{
   const occupied=['2026-10-22T06:00:00Z','2026-10-22 12:30:00+03'];
-  const slots=availableSlotsFor('2026-10-22',10,occupied,now);
-  for(const slot of slots)for(const value of occupied){const parsed=value.includes('T')?DateTime.fromISO(value):DateTime.fromSQL(value,{setZone:true});expect(Math.abs(Date.parse(slot)-parsed.toMillis())).toBeGreaterThanOrEqual(60_000);}
+  const slots=availableSlotsFor('2026-10-22',3,occupied,now);
+  for(const slot of slots)for(const value of occupied){const parsed=value.includes('T')?DateTime.fromISO(value):DateTime.fromSQL(value,{setZone:true});expect(Math.abs(Date.parse(slot)-parsed.toMillis())).toBeGreaterThanOrEqual(90*60_000);}
  });
  it('never rolls near-midnight plans into tomorrow',()=>{
   expect(()=>availableSlotsFor('2026-10-21',10,[],new Date('2026-10-21T20:56:00Z'))).toThrow(expect.objectContaining({statusCode:409}));
