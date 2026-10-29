@@ -8,14 +8,15 @@ import { today,tomorrow,experimentAssignments,chooseExperiment } from '../domain
 import { median } from '../domain/editorial.js';
 export async function weeklyReview(){
  const data=await analyticsData(),s=await settings();
+ const schoolFunnel=await rows(sql`SELECT e.stage,e.attribution,e.source,count(DISTINCT e.school_id)::int AS schools FROM growth_events e JOIN growth_schools s ON s.id=e.school_id WHERE s.qualified AND e.happened_at>now()-interval '30 days' GROUP BY e.stage,e.attribution,e.source`);
  const meaningful=await rows(sql`SELECT p.category,count(*)::int AS count FROM replies r JOIN posts p ON p.id=r.post_id WHERE r.meaningful AND r.created_at>now()-interval '28 days' GROUP BY p.category`);
- const report=await generate('weekly-review','Return JSON {observations:string[],tryNext:string[],avoid:string[],limitations:string[]}. Write Russian. Use only supplied real measurements. Compare 24h cohorts only with age24–28h, separate imported history, replies and browser/API sources. recentBrowser contains cumulative observations at their actual ages, never a comparable 24h cohort. No causal claim that a post caused account follower growth. Mention small samples, missing data and confounding. Never invent numbers. Suggest testable editorial changes, not automatic prohibitions.',{groups:data.groups,recentBrowser:data.metrics.filter(m=>m.source==='browser'&&m.checkpoint==='current').slice(0,30),account:data.account,meaningful,experiments:data.experiments,voice:s.voice},z.object({observations:z.array(z.string()).max(10),tryNext:z.array(z.string()).max(10),avoid:z.array(z.string()).max(10),limitations:z.array(z.string()).max(10)}));
+ const report=await generate('weekly-review','Return JSON {observations:string[],tryNext:string[],avoid:string[],limitations:string[]}. Write Russian. Use only supplied real measurements. Compare 24h cohorts only with age24–28h, separate imported history, replies and browser/API sources. recentBrowser contains cumulative observations at their actual ages, never a comparable 24h cohort. No causal claim that a post caused account follower growth. Mention small samples, missing data and confounding. Never invent numbers. Prioritize qualified school registrations, activation (completed lesson with verified accounting), paid and renewed. schoolFunnel is manually evidenced, not an automatic CRM integration. Never infer missing stages or attribute unknown payments to Threads. Suggest testable editorial changes, not automatic prohibitions.',{schoolFunnel,groups:data.groups,recentBrowser:data.metrics.filter(m=>m.source==='browser'&&m.checkpoint==='current').slice(0,30),account:data.account,meaningful,experiments:data.experiments,voice:s.voice},z.object({observations:z.array(z.string()).max(10),tryNext:z.array(z.string()).max(10),avoid:z.array(z.string()).max(10),limitations:z.array(z.string()).max(10)}));
  const week=DateTime.now().setZone('Europe/Kyiv').startOf('week').toISODate();
  await rows(sql`INSERT INTO reports(week,content) VALUES(${week},${JSON.stringify(report)}::jsonb) ON CONFLICT(week) DO UPDATE SET content=EXCLUDED.content,created_at=now()`);
  await event('review','success','Недельный разбор готов');
 }
 export async function optimize(){
- const s=await settings();if(!s.adaptive)return;
+ const s=await settings();if(s.weeklyCount||!s.adaptive)return;
  const active=await one(sql`SELECT * FROM experiments WHERE status='running'`);
  if(active&&DateTime.fromISO(String(active.ends_on)).plus({days:3}).toISODate()!>=today())return;
  if(active){

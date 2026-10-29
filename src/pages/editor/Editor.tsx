@@ -1,3 +1,4 @@
+import { usableSource, hypotheses, type GrowthSource } from '../../../shared/growth';
 import { createPortal } from "react-dom";
 import { motion } from "motion/react";
 import { useDialog } from "./useDialog";
@@ -26,6 +27,8 @@ export function Editor({
   post: Post | null;
   onClose: () => void;
 }) {
+  const growth=useData<{sources:GrowthSource[]}>('/growth');
+  const [evidenceId,setEvidenceId]=useState(post?.evidence_id||'');
   const [text, setText] = useState(post?.text || ""),
     [alternative, setAlternative] = useState(post?.alternative || ""),
     [category, setCategory] = useState<Category>(post?.category || "teaching"),
@@ -58,6 +61,7 @@ export function Editor({
         path: post ? `/posts/${post.id}` : "/posts",
         method: post ? "PUT" : "POST",
         body: {
+          evidence_id:evidenceId||null,
           text,
           alternative,
           category,
@@ -244,6 +248,7 @@ export function Editor({
                 placeholder="Например, отмены занятий"
               />
             </label>
+            <label>Подтверждённый материал<select disabled={locked} value={evidenceId} onChange={e=>setEvidenceId(e.target.value)}><option value="">Не выбран</option>{growth.data?.sources.map(s=><option key={s.id} value={s.id} disabled={!usableSource(s)}>{s.title} · {hypotheses[s.hypothesis]}{!usableSource(s)?' · нужна проверка':''}</option>)}</select></label>
             <div className="section-label">
               <h3>
                 Фотографии <span>{mediaIds.length} / 20</span>

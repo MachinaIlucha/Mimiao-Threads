@@ -83,6 +83,10 @@ export async function publishDue() {
   if(decision==='wait')return;
   const s=await settings();if(s.paused)return;
   const errors=checkText(post.text,s);
+  if(post.generated||post.evidence_id){
+   const source=post.evidence_id?await one(sql`SELECT confirmed,permission,kind FROM growth_sources WHERE id=${post.evidence_id}::uuid`):null;
+   if(!source||!source.confirmed||(source.kind==='customer'&&!source.permission))errors.push('Источник не подтверждён или разрешение отозвано');
+  }
   if(post.expires_at&&new Date(post.expires_at)<new Date())errors.push('Тема устарела');
   if(errors.length){await rows(sql`UPDATE posts SET status='blocked',error=${errors.join('. ')} WHERE id=${post.id}::uuid AND status='scheduled'`);return;}
   const claimed=await transaction(async tx=>{

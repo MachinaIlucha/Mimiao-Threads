@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { api, setCsrf, useData, useAction, time } from "./api";
 import { Busy, ErrorMessage } from "./components";
+const Growth = lazy(() => import('./pages/Growth').then(m=>({default:m.Growth})));
 const Queue = lazy(() =>
   import("./pages/Queue").then((module) => ({ default: module.Queue })),
 );
@@ -47,6 +48,7 @@ const navigation = [
   ["calendar", "Контент-план", CalendarDays],
   ["trends", "Что обсуждают", Radio],
   ["ideas", "Банк идей", Lightbulb],
+  ["growth", "Школы и гипотезы", TrendingUp],
   ["analytics", "Результаты", TrendingUp],
   ["discussions", "Обсуждения", MessageCircle],
   ["voice", "Голос и знания", SlidersHorizontal],
@@ -328,7 +330,7 @@ function Studio() {
                 {(page === "trends" || page === "ideas") && (
                   <Research mode={page} />
                 )}{" "}
-                {page === "analytics" && <Analytics />}
+                {page === "growth" && <Growth />}{page === "analytics" && <Analytics />}
                 {page === "discussions" && <Discussions />}
                 {page === "voice" && <SettingsPage />}
                 {page === "connections" && <Connections />}
