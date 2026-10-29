@@ -23,7 +23,7 @@ export async function writeDayPlan(day:string,posts:Candidate[],trends:Post[],ar
    if(current.length!==snapshot.length||current.some((p,i)=>p.id!==snapshot[i].id||p.revision!==snapshot[i].revision||p.status!==snapshot[i].status))throw new AppError(409,'План изменился во время подготовки. Повторите перегенерацию.');
   }
   const ids=snapshot.map(p=>p.id);
-  const occupied=await tx(sql`SELECT CASE WHEN status='published' THEN COALESCE(published_at,scheduled_at) ELSE scheduled_at END AS at FROM posts WHERE root_id IS NULL AND status IN ('scheduled','publishing','published') AND id::text NOT IN (SELECT jsonb_array_elements_text(${JSON.stringify(ids)}::jsonb)) AND COALESCE(CASE WHEN status='published' THEN published_at END,scheduled_at) BETWEEN ((${day}::date-interval '1 day') AT TIME ZONE 'Europe/Kyiv') AND ((${day}::date+interval '2 days') AT TIME ZONE 'Europe/Kyiv')`);
+  const occupied=await tx(sql`SELECT CASE WHEN status='published' THEN COALESCE(published_at,scheduled_at) ELSE scheduled_at END AS at FROM posts WHERE root_id IS NULL AND status IN ('draft','scheduled','publishing','published','unknown','blocked','missed') AND id::text NOT IN (SELECT jsonb_array_elements_text(${JSON.stringify(ids)}::jsonb)) AND COALESCE(CASE WHEN status='published' THEN published_at END,scheduled_at) BETWEEN ((${day}::date-interval '1 day') AT TIME ZONE 'Europe/Kyiv') AND ((${day}::date+interval '2 days') AT TIME ZONE 'Europe/Kyiv')`);
   const slots=availableSlotsFor(day,posts.length,occupied.map(p=>p.at),new Date(),rankedHours);
   for(let i=0;i<posts.length;i++){
    if(!posts[i].trendId)continue;

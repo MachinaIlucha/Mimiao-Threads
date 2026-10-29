@@ -10,6 +10,7 @@ import { migrate } from '../server/migrate';
 import { defaults } from '../server/defaults';
 import { createApp } from '../server/app';
 import { savePost } from '../server/services/posts';
+import { assignMissingDraftTimes } from '../server/services/draft-times';
 import { prepareDay } from '../server/services/generation';
 import { writeDayPlan } from '../server/services/plan-write';
 import { publishDue,reconcile } from '../server/services/publishing';
@@ -35,6 +36,26 @@ function mockPlan(count=5){vi.mocked(generate).mockResolvedValue({posts:planPost
 async function readyPlan(){await rows(sql`INSERT INTO daily_plans(day,status,count,slots) VALUES('2099-10-20','ready',5,'[]')`);}
 async function readyPost(){await readyPlan();return (await one(sql`INSERT INTO posts(text,status,scheduled_at,plan_day,slot) VALUES('Попереднє запитання','scheduled','2099-10-20T09:00:00+03:00','2099-10-20',0) RETURNING *`))!;}
 describe('authenticated API and editor',()=>{
+ it('assigns distinct times to concurrent drafts and retains an existing choice on edits',async()=>{
+  const posts=await Promise.all([savePost({text:'First draft'}),savePost({text:'Second draft'})]);
+  expect(new Set(posts.map(p=>p.scheduled_at)).size).toBe(2);
+  for(const post of posts){expect(post.status).toBe('draft');expect(new Date(post.scheduled_at!).getTime()).toBeGreaterThan(Date.now());}
+  const edited=await savePost({text:'Edited draft',scheduled_at:null,revision:posts[0].revision},posts[0].id);
+  expect(edited.scheduled_at).toBe(posts[0].scheduled_at);
+ });
+ it('repairs missing draft times once without changing approval or existing schedules',async()=>{
+  const scheduled=await due();
+  const untimed=(await one(sql`INSERT INTO posts(text,status) VALUES('Needs a proposed time','draft') RETURNING *`))!;
+  const chosen=await savePost({text:'Already has a time',scheduled_at:'2099-10-20T09:00:00+03:00'});
+  const changed=await assignMissingDraftTimes();
+  expect(changed).toHaveLength(1);expect(changed[0]).toMatchObject({id:untimed.id,status:'draft'});
+  expect(new Date(changed[0].scheduled_at).getTime()).toBeGreaterThan(Date.now());
+  expect(await one(sql`SELECT * FROM posts WHERE id=${scheduled!.id}::uuid`)).toEqual(scheduled);
+  expect(await one(sql`SELECT * FROM posts WHERE id=${chosen.id}::uuid`)).toEqual(chosen);
+  const revision=await one(sql`SELECT snapshot FROM revisions WHERE post_id=${untimed.id}::uuid`);
+  expect(revision!.snapshot.scheduled_at).toBeNull();
+  expect(await assignMissingDraftTimes()).toHaveLength(0);
+ });
  it('rejects unauthenticated and CSRF mutations',async()=>{expect((await app.inject('/api/posts')).statusCode).toBe(401);const headers=await login();expect((await app.inject({method:'POST',url:'/api/posts',headers:{cookie:headers.cookie,origin:headers.origin},payload:{text:'draft'}})).statusCode).toBe(403);expect((await app.inject({method:'POST',url:'/api/posts',headers,payload:{text:'draft'}})).statusCode).toBe(200);});
  it('normalizes photos and restricts access',async()=>{const headers=await login(),image=await sharp({create:{width:50,height:40,channels:3,background:'#bbaadd'}}).png().toBuffer();const boundary='studio-test-boundary';const payload=Buffer.concat([Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="photo"; filename="test.png"\r\nContent-Type: image/png\r\n\r\n`),image,Buffer.from(`\r\n--${boundary}--\r\n`)]);const upload=await app.inject({method:'POST',url:'/api/media',headers:{...headers,'content-type':`multipart/form-data; boundary=${boundary}`},payload});expect(upload.statusCode).toBe(200);const id=upload.json().id;expect((await app.inject(`/media/${id}`)).statusCode).toBe(401);const response=await app.inject({url:`/media/${id}`,headers:{cookie:headers.cookie}});expect(response.headers['content-type']).toBe('image/jpeg');expect((await sharp(response.rawPayload).metadata()).format).toBe('jpeg');});
  it('keeps revisions and rejects stale edits',async()=>{const p=await savePost({text:texts[0]});await savePost({text:texts[1],revision:p.revision,reason:'Новый вопрос'},p.id);await expect(savePost({text:texts[2],revision:p.revision},p.id)).rejects.toMatchObject({statusCode:409});expect((await rows(sql`SELECT * FROM revisions`))).toHaveLength(1);});
@@ -58,6 +79,13 @@ describe('evidence-led generation',()=>{
  async function source(permission=true,kind='founder'){return (await one(sql`INSERT INTO growth_sources(title,text,kind,hypothesis,confirmed,permission) VALUES('Перший запуск','Допомагаю почати з однієї групи',${kind},'transition',true,${permission}) RETURNING *`))!;}
  function candidate(id:string){return {evidenceId:id,hypothesis:'transition',text:'Почніть з однієї групи. Допоможу перевірити перший робочий сценарій.',alternative:'Можемо разом перевірити роботу однієї групи.',category:'founder',topic:'Допомога на старті',reason:'Гіпотеза переходу',sourceUrls:[],trendId:null,verified:true,concerns:[]};}
  function mock(p:any){vi.mocked(generate).mockImplementation(async kind=>kind==='plan-review'?{accepted:true,issues:[]}:{posts:[p]});}
+ it('keeps a generated proposal away from a time already assigned to another draft',async()=>{
+  const owner=await savePost({text:'Owner draft',scheduled_at:'2099-10-20T18:00:00+03:00'});
+  const e=await source();mock(candidate(e.id));await prepareDay('2099-10-20');
+  const generated=await one(sql`SELECT * FROM posts WHERE generated`);
+  expect(generated!.status).toBe('draft');
+  expect(Math.abs(Date.parse(generated!.scheduled_at)-Date.parse(owner.scheduled_at!))).toBeGreaterThanOrEqual(90*60_000);
+ });
  it('fails without evidence before calling the provider',async()=>{await expect(prepareDay('2099-10-20')).rejects.toMatchObject({code:'EVIDENCE_REQUIRED'});expect(generate).not.toHaveBeenCalled();expect(await rows(sql`SELECT * FROM posts`)).toHaveLength(0);});
  it('does not use a private customer story without permission',async()=>{await source(false,'customer');await expect(prepareDay('2099-10-20')).rejects.toMatchObject({code:'EVIDENCE_REQUIRED'});expect(generate).not.toHaveBeenCalled();});
  it('creates a draft with source and hypothesis, never a scheduled post',async()=>{const e=await source();mock(candidate(e.id));await prepareDay('2099-10-20');const p=await one(sql`SELECT * FROM posts`);expect(p).toMatchObject({status:'draft',evidence_id:e.id,hypothesis:'transition'});await publishDue();expect(threads).not.toHaveBeenCalled();});

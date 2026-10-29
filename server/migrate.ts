@@ -2,6 +2,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { pool, sql, one, rows } from './db.js';
 import { defaults } from './defaults.js';
+import { assignMissingDraftTimes } from './services/draft-times.js';
 export async function migrate() {
  const client = await pool.connect();
  try {
@@ -16,5 +17,6 @@ export async function migrate() {
   }
  } finally { await client.query('SELECT pg_advisory_unlock(7319401)'); client.release(); }
  await rows(sql`INSERT INTO settings(id,value) VALUES(1,${JSON.stringify(defaults)}::jsonb) ON CONFLICT DO NOTHING`);
+ await assignMissingDraftTimes();
 }
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) { await migrate(); console.log('Database migrations applied.'); await pool.end(); }

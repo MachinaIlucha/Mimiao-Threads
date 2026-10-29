@@ -236,7 +236,7 @@ export function Editor({
                   value={schedule}
                   onChange={(e) => setSchedule(e.target.value)}
                 />
-                <small>Любое будущее время, в том числе ночью.</small>
+                <small>Время черновика не запускает отправку. Если оставить поле пустым, при сохранении подберём свободный рабочий день.</small>
               </label>
             </div>
             <label>

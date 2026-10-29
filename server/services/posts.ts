@@ -4,6 +4,8 @@ import { AppError } from '../errors.js';
 import { settings, event } from './state.js';
 import { checkText } from '../domain/editorial.js';
 import type { Post } from '../../shared/types.js';
+import { occupiedPostTimes } from './draft-times.js';
+import { nextDraftTime } from '../domain/draft-time.js';
 export const postInput=z.object({evidence_id:z.string().uuid().nullable().optional(),hypothesis:z.enum(['transition','accounting']).nullable().optional(),text:z.string().max(4000),alternative:z.string().max(4000).default(''),category:z.enum(['teaching','life','founder','product']).default('teaching'),scheduled_at:z.string().datetime({offset:true}).nullable().default(null),media_ids:z.array(z.string().uuid()).max(20).default([]),topic:z.string().max(300).default(''),reason:z.string().max(2000).default(''),sources:z.array(z.string().url()).max(20).default([]),expires_at:z.string().datetime({offset:true}).nullable().default(null),status:z.enum(['draft','scheduled','cancelled']).default('draft'),revision:z.number().int().optional()});
 export async function savePost(raw:unknown,id?:string) {
  const data=postInput.parse(raw),s=await settings();
@@ -23,6 +25,7 @@ export async function savePost(raw:unknown,id?:string) {
    if(['published','publishing','unknown'].includes(old.status))throw new AppError(409,'Эту публикацию уже нельзя изменить');
    if(data.revision!==old.revision)throw new AppError(409,'Пост изменился. Обновите страницу.','REVISION_CONFLICT');
   }
+  if(data.status==='draft'&&!data.scheduled_at)data.scheduled_at=old?.scheduled_at||nextDraftTime(await occupiedPostTimes(tx,id),s.weeklyCount??5);
   const evidenceId=data.evidence_id===undefined?old?.evidence_id||null:data.evidence_id;
   let hypothesis=data.hypothesis===undefined?old?.hypothesis||null:data.hypothesis;
   if(evidenceId){
