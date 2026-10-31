@@ -20,7 +20,7 @@ const schedules={research:'0 18 * * *',prepare:'0 19 * * *',publish:'* * * * *',
 for(const name of jobNames){await boss.work(name,async jobs=>{for(const job of jobs){
  let request:PrepareRequest|undefined;
  try{
-  if(name==='prepare'){request=parsePrepareRequest(job.data);await prepareDay(request.day,{regenerate:request.regenerate});}
+  if(name==='prepare'){request=parsePrepareRequest(job.data);await prepareDay(request.day,{regenerate:request.regenerate,manual:!!(job.data&&typeof job.data==='object'&&'day' in job.data)});}
   else await handlers[name]();
   await heartbeat(name);
  }catch(e){

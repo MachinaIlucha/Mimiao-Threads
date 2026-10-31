@@ -11,6 +11,10 @@ const event = (message: string, created_at: string, kind = "prepare", status = "
 });
 
 describe("readPlanFeedback", () => {
+  it("reports an automatic day off as skipped rather than a completed empty plan", () => {
+    expect(readPlanFeedback({ plans: [{ ...plan("ready"), count: 0 }], events: [] }, day))
+      .toEqual({ state: "skipped", count: 0, error: null, updatedAt });
+  });
   it("does not mistake another day for tomorrow", () => {
     const data: PlanOperations = {
       plans: [

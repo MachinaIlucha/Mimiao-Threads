@@ -17,7 +17,7 @@ export interface PlanOperations {
 }
 
 export interface PlanFeedback {
-  state: "idle" | "generating" | "ready" | "failed";
+  state: "idle" | "generating" | "ready" | "failed" | "skipped";
   count: number;
   error: string | null;
   updatedAt: string | null;
@@ -37,5 +37,5 @@ export function readPlanFeedback(
         .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))[0]?.message
         ?? 'Не удалось подготовить план. Попробуйте ещё раз или проверьте журнал в «Подключениях».'
     : null;
-  return { state: plan.status, count: plan.count, error, updatedAt: plan.updated_at };
+  return { state: plan.status === "ready" && plan.count === 0 ? "skipped" : plan.status, count: plan.count, error, updatedAt: plan.updated_at };
 }
