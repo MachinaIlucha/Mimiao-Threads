@@ -30,7 +30,7 @@ beforeEach(() => {
   vi.mocked(rows).mockImplementation(async query => dialect.sqlToQuery(query).sql.includes('FROM growth_sources') ? [first, second] as any : []);
   vi.mocked(one).mockImplementation(async query => dialect.sqlToQuery(query).sql.includes('INSERT INTO daily_plans') ? { day: '2026-10-31' } as any : undefined);
   vi.mocked(generate).mockImplementation(async (kind, _instruction, input: any) =>
-    (kind === 'plan-review' ? { accepted: true, issues: [] } : { posts: [candidate(input.evidence[0])] }) as any);
+    (kind === 'plan-review' ? { blockingIssues: [], suggestions: [] } : { posts: [candidate(input.evidence[0])] }) as any);
 });
 afterEach(() => vi.useRealTimers());
 
@@ -47,7 +47,7 @@ it('keeps automatic weekend preparation off but lets an explicit request produce
 it('changes confirmed source after editorial rejection and supplies product knowledge to the reviewer', async () => {
   let reviews = 0;
   vi.mocked(generate).mockImplementation(async (kind, _instruction, input: any) => {
-    if (kind === 'plan-review') return (++reviews === 1 ? { accepted: false, issues: ['Same lesson-check takeaway as history'] } : { accepted: true, issues: [] }) as any;
+    if (kind === 'plan-review') return (++reviews === 1 ? { blockingIssues: ['Same lesson-check takeaway as history'], suggestions: [] } : { blockingIssues: [], suggestions: [] }) as any;
     return { posts: [candidate(input.evidence[0])] } as any;
   });
   await prepareDay('2026-11-02');
@@ -68,8 +68,16 @@ it('never saves a rejected plan or silently replaces missing evidence with fille
 
 it('retains the editorial gate when all attempts are rejected', async () => {
   vi.mocked(generate).mockImplementation(async (kind, _instruction, input: any) =>
-    (kind === 'plan-review' ? { accepted: false, issues: ['Repeated takeaway'] } : { posts: [candidate(input.evidence[0])] }) as any);
+    (kind === 'plan-review' ? { blockingIssues: ['Repeated takeaway'], suggestions: [] } : { posts: [candidate(input.evidence[0])] }) as any);
   await expect(prepareDay('2026-11-02')).rejects.toMatchObject({ code: 'GENERATION_INVALID' });
   expect(writeDayPlan).not.toHaveBeenCalled();
   expect(vi.mocked(generate).mock.calls.filter(([kind]) => kind === 'plan-review')).toHaveLength(3);
+});
+
+
+it('saves a valid plan when the reviewer has only optional suggestions', async () => {
+  vi.mocked(generate).mockImplementation(async (kind, _instruction, input: any) =>
+    (kind === 'plan-review' ? { blockingIssues: [], suggestions: ['Could shorten the opening', 'The source supports the factual claims'] } : { posts: [candidate(input.evidence[0])] }) as any);
+  await expect(prepareDay('2026-11-02')).resolves.toMatchObject({ count: 1 });
+  expect(writeDayPlan).toHaveBeenCalledOnce();
 });

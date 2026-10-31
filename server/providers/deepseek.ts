@@ -21,7 +21,7 @@ export async function generate<T>(kind:string,instruction:string,input:unknown,s
  const parsed=schema.safeParse((()=>{try{return JSON.parse(result.choices?.[0]?.message?.content||'');}catch{return null;}})());
  const styleErrors=parsed.success?clientVoiceErrors(kind,parsed.data):[];
  const schemaIssues=parsed.success?[]:parsed.error.issues.map(({path,code})=>({path,code}));
- await rows(sql`INSERT INTO generation_runs(kind,model,prompt_version,input_tokens,output_tokens,cached_tokens,sources,checks) VALUES(${kind},${s.model},${PROMPT_VERSION},${result.usage?.prompt_tokens||0},${result.usage?.completion_tokens||0},${result.usage?.prompt_cache_hit_tokens||0},${JSON.stringify(sources)}::jsonb,${JSON.stringify({valid:parsed.success&&!styleErrors.length,styleVersion:clientVoiceInstruction(kind)?CLIENT_VOICE_VERSION:null,styleErrors,schemaIssues})}::jsonb)`);
+ await rows(sql`INSERT INTO generation_runs(kind,model,prompt_version,input_tokens,output_tokens,cached_tokens,sources,checks) VALUES(${kind},${s.model},${PROMPT_VERSION},${result.usage?.prompt_tokens||0},${result.usage?.completion_tokens||0},${result.usage?.prompt_cache_hit_tokens||0},${JSON.stringify(sources)}::jsonb,${JSON.stringify({valid:parsed.success&&!styleErrors.length,styleVersion:clientVoiceInstruction(kind)?CLIENT_VOICE_VERSION:null,styleErrors,schemaIssues,...(kind==='plan-review'&&parsed.success?{review:parsed.data}:{})})}::jsonb)`);
  if(!parsed.success)throw new AppError(502,'DeepSeek вернул неподходящий ответ. Публикации не созданы.','GENERATION_INVALID');
  if(styleErrors.length)throw new AppError(502,styleErrors.join(' '),'GENERATION_STYLE_INVALID');
  return parsed.data;
