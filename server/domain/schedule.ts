@@ -7,7 +7,7 @@ export function today(now = new Date()) { return DateTime.fromJSDate(now,{zone:Z
 export function slotsFor(day: string, count=10, rankedHours: number[] = []): string[] {
  if (!Number.isInteger(count) || count<1 || count>10) throw new AppError(400,'Daily count must be 1–10');
  const chosen: number[]=[];
- const defaults = count<=4 ? ({1:[18],2:[12,21],3:[10,16,21],4:[9,13,17,21]}[count]!) : count===5 ? [9,12,15,18,21] : Array.from({length:count},(_,i)=>9+i*1.5);
+ const defaults = count<=4 ? ({1:[18],2:[12,21],3:[10,16,21],4:[9,13,17,21]}[count]!) : count===5 ? [9,12,15,18,21] : count===8 ? [9,11,13,15,17,19,21,22.5] : Array.from({length:count},(_,i)=>9+i*1.5);
  for (const hour of [...rankedHours, ...defaults, ...Array.from({length:31},(_,i)=>8+i/2)]) {
   if (!Number.isFinite(hour) || hour<8 || hour>23 || chosen.some(h=>Math.abs(h-hour)<1.5)) continue;
   chosen.push(hour); if (chosen.length===count) break;

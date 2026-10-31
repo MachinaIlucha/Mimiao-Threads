@@ -1,6 +1,7 @@
 import type { Settings } from '../shared/types.js';
+import { POSTS_PER_DAY, DAYS_PER_WEEK } from '../shared/cadence.js';
 export const defaults: Settings = {
- paused: true, model: 'deepseek-flash', timezone: 'Europe/Kyiv', dailyCount: 1, weeklyCount: 5, adaptive: false,
+ paused: true, model: 'deepseek-flash', timezone: 'Europe/Kyiv', dailyCount: POSTS_PER_DAY, weeklyCount: DAYS_PER_WEEK, adaptive: false,
  startedAt: new Date().toISOString(), researchEnabled: true,
  keywords: ['CRM для школи','СРМ для школи','власники шкіл','облік оплат','перенесення занять','заміна CRM','Optimate','Voopty'],
  profiles: ['optimate.online','voopty_erp','keycrmapp','oleh.hrytsyniak','_sstacie_','anastasiia.kinga'], forbidden: ['Найкраща CRM','гарантуємо результат','повністю автоматизує школу'], preferred: [],

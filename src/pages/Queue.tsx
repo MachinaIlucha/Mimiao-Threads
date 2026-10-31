@@ -91,7 +91,7 @@ export function Queue({ calendar }: { calendar: boolean }) {
       <p className="hint">При перегенерации заменяются неопубликованные посты выбранного дня. Старые версии сохраняются; опубликованные посты остаются.</p>
       <ErrorMessage error={prepare.error} />
       {prepare.state === "skipped" && (
-        <p role="status" className="hint">На {targetLabel} автоматическая подготовка не запланирована: действует расписание {settings.data?.weeklyCount ?? 5} дней в неделю. Кнопка «Подготовить» создаст черновик на выбранный день вручную.</p>
+        <p role="status" className="hint">На {targetLabel} автоматическая подготовка не запланирована: действует расписание {settings.data?.weeklyCount ?? 7} дней в неделю. Кнопка «Подготовить» создаст черновик на выбранный день вручную.</p>
       )}
       {["queued", "generating", "ready"].includes(prepare.state) && (
         <p role="status" aria-live="polite" className="success-note">

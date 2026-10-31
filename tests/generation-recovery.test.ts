@@ -4,6 +4,7 @@ import { rows, one } from '../server/db.js';
 import { generate } from '../server/providers/deepseek.js';
 import { prepareDay } from '../server/services/generation.js';
 import { writeDayPlan } from '../server/services/plan-write.js';
+import { settings } from '../server/services/state.js';
 import { defaults } from '../server/defaults.js';
 
 vi.mock('../server/db.js', async () => ({ sql: (await import('drizzle-orm')).sql, rows: vi.fn(), one: vi.fn() }));
@@ -26,6 +27,7 @@ const candidate = (source: typeof first | typeof second) => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(settings).mockResolvedValue({...defaults,dailyCount:1,weeklyCount:5});
   vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-31T12:00:00Z'));
   vi.mocked(rows).mockImplementation(async query => dialect.sqlToQuery(query).sql.includes('FROM growth_sources') ? [first, second] as any : []);
   vi.mocked(one).mockImplementation(async query => dialect.sqlToQuery(query).sql.includes('INSERT INTO daily_plans') ? { day: '2026-10-31' } as any : undefined);
@@ -80,4 +82,21 @@ it('saves a valid plan when the reviewer has only optional suggestions', async (
     (kind === 'plan-review' ? { blockingIssues: [], suggestions: ['Could shorten the opening', 'The source supports the factual claims'] } : { posts: [candidate(input.evidence[0])] }) as any);
   await expect(prepareDay('2026-11-02')).resolves.toMatchObject({ count: 1 });
   expect(writeDayPlan).toHaveBeenCalledOnce();
+});
+
+
+it('prepares eight distinct posts on both Sunday and Monday with the permanent settings',async()=>{
+ vi.mocked(settings).mockResolvedValue(defaults);
+ const sources=Array.from({length:8},(_,i)=>({...first,id:`00000000-0000-4000-8000-00000000000${i}`}));
+ const texts=['Хто підтверджує виплату викладачу?','Де знайти історію зарахувань учня?','Які відомості переносити з таблиці?','Чи потрібен команді окремий доступ до філій?','Як школа перевіряє неоплачені рахунки?','Яку інформацію отримують батьки?','Коли зупиняти надсилання нагадувань?','Що врахувати перед зміною навчального пакета?'];
+ vi.mocked(rows).mockImplementation(async query=>dialect.sqlToQuery(query).sql.includes('FROM growth_sources')?sources as any:[]);
+ vi.mocked(generate).mockImplementation(async(kind,_instruction,input:any)=>
+  (kind==='plan-review'?{blockingIssues:[],suggestions:[]}:{posts:input.evidence.map((source:any,i:number)=>({...candidate(source),text:texts[i],alternative:texts[i],topic:`Тема ${i}`}))}) as any);
+ for(const day of ['2026-11-01','2026-11-02'])await expect(prepareDay(day)).resolves.toMatchObject({day,count:8});
+ expect(writeDayPlan).toHaveBeenCalledTimes(2);
+ for(const call of vi.mocked(writeDayPlan).mock.calls)expect(call[1]).toHaveLength(8);
+ for(const call of vi.mocked(generate).mock.calls.filter(([kind])=>kind==='daily-plan')){
+  expect((call[2] as any).slots).toHaveLength(8);
+  expect(call[1]).toContain('Exactly 8 different posts');
+ }
 });

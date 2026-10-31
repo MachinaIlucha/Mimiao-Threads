@@ -33,7 +33,7 @@ export function ScheduleHero({
         new Date(p.scheduled_at).getTime() > Date.now(),
     )
     .sort((a, b) => a.scheduled_at!.localeCompare(b.scheduled_at!))[0];
-  const target = settings?.dailyCount || 10;
+  const target = settings?.dailyCount || 8;
   return (
     <section className="schedule-hero">
       <Ambient />

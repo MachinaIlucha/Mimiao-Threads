@@ -25,7 +25,7 @@ export async function savePost(raw:unknown,id?:string) {
    if(['published','publishing','unknown'].includes(old.status))throw new AppError(409,'Эту публикацию уже нельзя изменить');
    if(data.revision!==old.revision)throw new AppError(409,'Пост изменился. Обновите страницу.','REVISION_CONFLICT');
   }
-  if(data.status==='draft'&&!data.scheduled_at)data.scheduled_at=old?.scheduled_at||nextDraftTime(await occupiedPostTimes(tx,id),s.weeklyCount??5);
+  if(data.status==='draft'&&!data.scheduled_at)data.scheduled_at=old?.scheduled_at||nextDraftTime(await occupiedPostTimes(tx,id),s.weeklyCount??7,new Date(),s.dailyCount??8);
   const evidenceId=data.evidence_id===undefined?old?.evidence_id||null:data.evidence_id;
   let hypothesis=data.hypothesis===undefined?old?.hypothesis||null:data.hypothesis;
   if(evidenceId){

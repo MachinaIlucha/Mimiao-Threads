@@ -17,7 +17,7 @@ export async function assignMissingDraftTimes(){
   const [settings]=await tx(sql`SELECT value FROM settings WHERE id=1`);
   const occupied=await occupiedPostTimes(tx),now=new Date(),updated=[];
   for(const post of missing){
-   const at=nextDraftTime(occupied,settings?.value.weeklyCount??5,now);
+   const at=nextDraftTime(occupied,settings?.value.weeklyCount??7,now,settings?.value.dailyCount??8);
    await tx(sql`INSERT INTO revisions(post_id,revision,snapshot,reason) VALUES(${post.id}::uuid,${post.revision},${JSON.stringify(post)}::jsonb,'Назначено время черновика без изменения согласования') ON CONFLICT DO NOTHING`);
    const [saved]=await tx(sql`UPDATE posts SET scheduled_at=${at}::timestamptz,revision=revision+1,updated_at=now() WHERE id=${post.id}::uuid RETURNING id,topic,status,scheduled_at`);
    occupied.push(at);updated.push(saved);
