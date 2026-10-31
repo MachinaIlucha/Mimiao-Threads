@@ -135,6 +135,26 @@ describe('metrics and replies',()=>{
  it('does not resend an ambiguous reply',async()=>{const r=await one(sql`INSERT INTO replies(provider_id,username,text,draft,state,created_at) VALUES('reply','person','Question',${texts[1]},'draft',now()) RETURNING id`);vi.mocked(threads).mockImplementation(async endpoint=>{if(endpoint==='me/threads_publish')throw new ProviderError(0,'publish',true);return endpoint==='me/threads'?{id:'container'}:{status:'FINISHED'};});await expect(sendReply(r!.id)).rejects.toThrow();await expect(sendReply(r!.id)).rejects.toMatchObject({statusCode:409});expect(vi.mocked(threads).mock.calls.filter(c=>c[0]==='me/threads_publish')).toHaveLength(1);});
 });
 describe('browser publishing transport',()=>{
+ it.each([
+  {interval:60,offset:0,linked:true,previousMinutes:61,sends:true},
+  {interval:90,offset:0,linked:true,previousMinutes:61,sends:false},
+  {interval:60,offset:0,linked:false,previousMinutes:61,sends:false},
+  {interval:60,offset:-1,linked:true,previousMinutes:61,sends:false},
+  {interval:60,offset:0,linked:true,previousMinutes:59,sends:false},
+ ])('uses hourly spacing only for the matching plan: %j',async({interval,offset,linked,previousMinutes,sends})=>{
+  config.publishingMode='browser';
+  const plan=(await one(sql`INSERT INTO daily_plans(day,status,count,slots,min_interval_minutes) VALUES((now() AT TIME ZONE 'Europe/Kyiv')::date+${offset}::integer,'ready',8,'[]',${interval}) RETURNING day`))!;
+  await rows(sql`INSERT INTO posts(text,status,published_at) VALUES('Previous post','published',now()-${previousMinutes}::integer*interval '1 minute')`);
+  const p=await due();
+  if(linked)await rows(sql`UPDATE posts SET plan_day=${plan.day}::date WHERE id=${p!.id}::uuid`);
+  vi.mocked(publishInBrowser).mockImplementation(async(post,beforeSend)=>{
+   await beforeSend([],new Date().toISOString());
+   return {url:'https://www.threads.com/@mimiao.crm/post/compact-test',timestamp:new Date().toISOString(),text:post.text,images:0};
+  });
+  await publishDue();
+  expect(publishInBrowser).toHaveBeenCalledTimes(sends?1:0);
+  expect((await one(sql`SELECT status FROM posts WHERE id=${p!.id}::uuid`))!.status).toBe(sends?'published':'scheduled');
+ });
  it('publishes without API credentials and records a permalink instead of a fake API id',async()=>{
   config.publishingMode='browser';vi.mocked(connection).mockResolvedValue(undefined);
   const p=await due();

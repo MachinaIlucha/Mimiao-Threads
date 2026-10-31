@@ -15,8 +15,9 @@ export function slotsFor(day: string, count=10, rankedHours: number[] = []): str
  const hours = chosen.length===count ? chosen : defaults;
  return hours.sort((a,b)=>a-b).map(h=>DateTime.fromISO(day,{zone:ZONE}).set({hour:Math.floor(h),minute:Math.round((h%1)*60),second:0,millisecond:0}).toUTC().toISO()!);
 }
-export function availableSlotsFor(day:string,count:number,occupied:string[]=[],now=new Date(),rankedHours:number[]=[]):string[] {
+export function availableSlotsFor(day:string,count:number,occupied:string[]=[],now=new Date(),rankedHours:number[]=[],minIntervalMinutes:60|90=90):string[] {
  const date=DateTime.fromISO(day,{zone:ZONE}),localNow=DateTime.fromJSDate(now,{zone:ZONE});
+ if(![60,90].includes(minIntervalMinutes))throw new AppError(400,'Допустимый интервал: 60 или 90 минут');
  if(!Number.isInteger(count)||count<1||count>10)throw new AppError(400,'Daily count must be 1–10');
  if(!/^\d{4}-\d{2}-\d{2}$/.test(day)||!date.isValid||date.toISODate()!==day||day<localNow.toISODate()!)throw new AppError(400,'Выберите сегодняшний или будущий день');
  const isToday=day===localNow.toISODate();
@@ -28,23 +29,23 @@ export function availableSlotsFor(day:string,count:number,occupied:string[]=[],n
   const iso=DateTime.fromISO(value,{setZone:true});
   return (iso.isValid?iso:DateTime.fromSQL(value,{setZone:true})).toMillis();
  }).filter(Number.isFinite);
- const free=(timestamp:number)=>reserved.every(value=>Math.abs(value-timestamp)>=90*60_000);
+ const free=(timestamp:number)=>reserved.every(value=>Math.abs(value-timestamp)>=minIntervalMinutes*60_000);
  {
   const defaults=slotsFor(day,count,rankedHours);
   if(defaults.every(value=>{const timestamp=DateTime.fromISO(value).toMillis();return timestamp>=start&&free(timestamp);}))return defaults;
  }
  const candidates:number[]=[];
  for(let instant=start;instant<=end;instant+=60_000){
-  if(free(instant)&&(!candidates.length||instant-candidates[candidates.length-1]>=90*60_000))candidates.push(instant);
+  if(free(instant)&&(!candidates.length||instant-candidates[candidates.length-1]>=minIntervalMinutes*60_000))candidates.push(instant);
  }
- if(candidates.length<count)throw new AppError(409,'Недостаточно времени для постов с интервалом 90 минут. Уменьшите число постов или выберите завтра.');
+ if(candidates.length<count)throw new AppError(409,`Недостаточно времени для постов с интервалом ${minIntervalMinutes} минут. Уменьшите число постов или выберите завтра.`);
  return Array.from({length:count},(_,i)=>DateTime.fromMillis(candidates[count===1?0:Math.round(i*(candidates.length-1)/(count-1))],{zone:'utc'}).toISO()!);
 }
-export function dueDecision(scheduled: string, now: Date, previousPublished: string|null) {
+export function dueDecision(scheduled: string, now: Date, previousPublished: string|null,minIntervalMinutes:60|90=90) {
  const late = now.getTime()-new Date(scheduled).getTime();
  if(late<0) return 'wait';
  if(late>30*60_000) return 'missed';
- if(previousPublished && now.getTime()-Date.parse(previousPublished)<90*60_000)return 'wait';
+ if(previousPublished && now.getTime()-Date.parse(previousPublished)<minIntervalMinutes*60_000)return 'wait';
  return 'publish';
 }
 export function eligibleCheckpoint(age: number, checkpoint: string) { return checkpoint in checkpointHours && age >= checkpointHours[checkpoint as keyof typeof checkpointHours]; }

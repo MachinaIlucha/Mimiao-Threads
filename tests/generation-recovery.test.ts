@@ -59,7 +59,7 @@ it('changes confirmed source after editorial rejection and supplies product know
   expect(writers[1][4]).toEqual([second.url]);
   for (const call of vi.mocked(generate).mock.calls.filter(([kind]) => kind === 'plan-review'))
     expect((call[2] as any).knowledge).toBe(defaults.knowledge);
-  expect(writeDayPlan).toHaveBeenCalledWith('2026-11-02', [candidate(second)], [], null, [], false, []);
+  expect(writeDayPlan).toHaveBeenCalledWith('2026-11-02', [candidate(second)], [], null, [], false, [],90);
 });
 
 it('never saves a rejected plan or silently replaces missing evidence with filler', async () => {

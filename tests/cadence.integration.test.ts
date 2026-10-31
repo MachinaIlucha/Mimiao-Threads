@@ -1,4 +1,4 @@
-import { beforeAll, afterAll, beforeEach, expect, it, vi } from 'vitest';
+import { beforeAll, afterAll, beforeEach, afterEach, expect, it, vi } from 'vitest';
 import { readFile } from 'node:fs/promises';
 import { DateTime } from 'luxon';
 vi.mock('../server/providers/deepseek',()=>({generate:vi.fn(),search:vi.fn()}));
@@ -24,6 +24,7 @@ beforeEach(async()=>{
  await rows(sql`UPDATE settings SET value=${JSON.stringify(defaults)}::jsonb WHERE id=1`);
 });
 afterAll(async()=>{await app.close();await pool.end();});
+afterEach(()=>vi.useRealTimers());
 
 it('upgrades the stored cadence and keeps it through repeated startup migrations',async()=>{
  await rows(sql`UPDATE settings SET value=value||'{"dailyCount":1,"weeklyCount":5,"paused":false,"knowledge":"Keep owner facts"}'::jsonb WHERE id=1`);
@@ -57,4 +58,32 @@ it('saves exactly eight weekend drafts and does not regenerate a completed day',
  await expect(prepareDay(sunday)).resolves.toMatchObject({existing:true});
  expect(generate).toHaveBeenCalledTimes(2);
  expect(await rows(sql`SELECT id FROM posts WHERE plan_day=${sunday}::date`)).toHaveLength(8);
+});
+
+it('replaces today with eight hourly drafts while preserving tomorrow and the old revision',async()=>{
+ vi.useFakeTimers({toFake:['Date']});vi.setSystemTime(new Date('2026-10-31T14:00:00Z'));
+ for(let i=0;i<8;i++)await rows(sql`INSERT INTO growth_sources(title,text,kind,hypothesis,confirmed) VALUES(${'Source '+i},${'Verified material '+i},'founder','accounting',true)`);
+ vi.mocked(generate).mockImplementation(async(kind,_instruction,input:any)=>{
+  if(kind==='plan-review')return {blockingIssues:[],suggestions:[]} as any;
+  return {posts:input.evidence.map((source:any,i:number)=>({evidenceId:source.id,hypothesis:source.hypothesis,text:texts[i],alternative:texts[i],category:'founder',topic:`Unique topic ${i}`,reason:'Confirmed source',sourceUrls:[],trendId:null,verified:true,concerns:[]}))} as any;
+ });
+ await rows(sql`INSERT INTO daily_plans(day,status,count,slots) VALUES('2026-10-31','ready',1,'[]'),('2026-11-01','ready',8,'[]')`);
+ const old=(await one(sql`INSERT INTO posts(text,status,plan_day,slot,scheduled_at) VALUES('Old draft','draft','2026-10-31',0,'2026-10-31T18:00:00+02:00') RETURNING *`))!;
+ const tomorrow=(await one(sql`INSERT INTO posts(text,status,plan_day,slot,scheduled_at) VALUES('Tomorrow draft','draft','2026-11-01',0,'2026-11-01T09:00:00+02:00') RETURNING *`))!;
+ await expect(prepareDay('2026-10-31',{manual:true,regenerate:true,minIntervalMinutes:60})).resolves.toMatchObject({count:8});
+ const posts=await rows(sql`SELECT * FROM posts WHERE plan_day='2026-10-31' ORDER BY scheduled_at`);
+ expect(posts).toHaveLength(8);expect(posts.every(p=>p.status==='draft')).toBe(true);
+ expect(posts.map(p=>DateTime.fromJSDate(new Date(p.scheduled_at)).setZone('Europe/Kyiv').toFormat('HH:mm'))).toEqual(['16:05','17:05','18:05','19:05','20:05','21:05','22:05','23:05']);
+ expect(await one(sql`SELECT status,count,min_interval_minutes FROM daily_plans WHERE day='2026-10-31'`)).toEqual({status:'ready',count:8,min_interval_minutes:60});
+ expect(await one(sql`SELECT status,count,min_interval_minutes FROM daily_plans WHERE day='2026-11-01'`)).toEqual({status:'ready',count:8,min_interval_minutes:90});
+ expect(await one(sql`SELECT * FROM posts WHERE id=${tomorrow.id}::uuid`)).toEqual(tomorrow);
+ expect(await one(sql`SELECT status,plan_day FROM posts WHERE id=${old.id}::uuid`)).toEqual({status:'cancelled',plan_day:null});
+ expect((await one(sql`SELECT snapshot FROM revisions WHERE post_id=${old.id}::uuid`))!.snapshot.text).toBe('Old draft');
+});
+
+it('rejects compact spacing for automatic or future generation',async()=>{
+ vi.useFakeTimers({toFake:['Date']});vi.setSystemTime(new Date('2026-10-31T14:00:00Z'));
+ await expect(prepareDay('2026-10-31',{minIntervalMinutes:60})).rejects.toMatchObject({statusCode:400});
+ await expect(prepareDay('2026-11-01',{manual:true,minIntervalMinutes:60})).rejects.toMatchObject({statusCode:400});
+ expect(generate).not.toHaveBeenCalled();
 });

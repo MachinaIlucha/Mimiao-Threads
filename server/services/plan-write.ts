@@ -13,7 +13,7 @@ export async function assertDayResolved(query:Query,day:string) {
  const unresolved=await query(sql`SELECT id FROM posts WHERE root_id IS NULL AND status IN ('publishing','unknown') AND COALESCE((scheduled_at AT TIME ZONE 'Europe/Kyiv')::date,plan_day)=${day}::date LIMIT 1`);
  if(unresolved.length)throw new AppError(409,'Сначала разрешите незавершённую публикацию на выбранный день.');
 }
-export async function writeDayPlan(day:string,posts:Candidate[],trends:Post[],arm:string|null,snapshot:Post[],regenerate:boolean,rankedHours:number[]=[]) {
+export async function writeDayPlan(day:string,posts:Candidate[],trends:Post[],arm:string|null,snapshot:Post[],regenerate:boolean,rankedHours:number[]=[],minIntervalMinutes:60|90=90) {
  await transaction(async tx=>{
   await tx(sql`SELECT pg_advisory_xact_lock(7319403)`);
   await tx(sql`SELECT pg_advisory_xact_lock(7319402)`);
@@ -24,7 +24,7 @@ export async function writeDayPlan(day:string,posts:Candidate[],trends:Post[],ar
   }
   const ids=snapshot.map(p=>p.id);
   const occupied=await tx(sql`SELECT CASE WHEN status='published' THEN COALESCE(published_at,scheduled_at) ELSE scheduled_at END AS at FROM posts WHERE root_id IS NULL AND status IN ('draft','scheduled','publishing','published','unknown','blocked','missed') AND id::text NOT IN (SELECT jsonb_array_elements_text(${JSON.stringify(ids)}::jsonb)) AND COALESCE(CASE WHEN status='published' THEN published_at END,scheduled_at) BETWEEN ((${day}::date-interval '1 day') AT TIME ZONE 'Europe/Kyiv') AND ((${day}::date+interval '2 days') AT TIME ZONE 'Europe/Kyiv')`);
-  const slots=availableSlotsFor(day,posts.length,occupied.map(p=>p.at),new Date(),rankedHours);
+  const slots=availableSlotsFor(day,posts.length,occupied.map(p=>p.at),new Date(),rankedHours,minIntervalMinutes);
   for(let i=0;i<posts.length;i++){
    if(!posts[i].trendId)continue;
    const trend=trends.find(t=>t.id===posts[i].trendId);
@@ -41,6 +41,6 @@ export async function writeDayPlan(day:string,posts:Candidate[],trends:Post[],ar
    if(!source?.confirmed||(source.kind==='customer'&&!source.permission)||source.hypothesis!==p.hypothesis)throw new AppError(409,'Источник изменился во время генерации. Проверьте его снова.');
    await tx(sql`INSERT INTO posts(text,alternative,category,status,scheduled_at,sources,topic,reason,expires_at,generated,plan_day,slot,experiment_arm,evidence_id,hypothesis) VALUES(${p.text},${p.alternative},${p.category},'draft',${slots[i]},${JSON.stringify(p.sourceUrls)}::jsonb,${p.topic},${p.reason},${trend?.expires_at||null},true,${day}::date,${Number(next)+i},${arm},${p.evidenceId}::uuid,${p.hypothesis})`);
   }
-  await tx(sql`UPDATE daily_plans SET status='ready',count=${posts.length},slots=${JSON.stringify(slots)}::jsonb,updated_at=now() WHERE day=${day}::date`);
+  await tx(sql`UPDATE daily_plans SET status='ready',count=${posts.length},slots=${JSON.stringify(slots)}::jsonb,min_interval_minutes=${minIntervalMinutes},updated_at=now() WHERE day=${day}::date`);
  });
 }

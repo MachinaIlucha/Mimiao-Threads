@@ -1,9 +1,23 @@
 import { describe,it,expect } from 'vitest';
 import { DateTime } from 'luxon';
-import { availableSlotsFor } from '../server/domain/schedule';
+import { availableSlotsFor,dueDecision } from '../server/domain/schedule';
 const zone='Europe/Kyiv';
 const now=new Date('2026-10-21T18:00:00Z');
 describe('available plan slots',()=>{
+ it('fits eight future slots today only with an explicit hourly interval',()=>{
+  const afternoon=new Date('2026-10-31T14:00:00Z');
+  expect(()=>availableSlotsFor('2026-10-31',8,[],afternoon)).toThrow('90 минут');
+  const slots=availableSlotsFor('2026-10-31',8,[],afternoon,[],60);
+  expect(slots.map(value=>DateTime.fromISO(value).setZone(zone).toFormat('HH:mm'))).toEqual(['16:05','17:05','18:05','19:05','20:05','21:05','22:05','23:05']);
+  expect(()=>availableSlotsFor('2026-10-31',8,[],new Date('2026-10-31T15:00:00Z'),[],60)).toThrow('60 минут');
+ });
+ it('honors the selected interval between actual sends and retains the late-job limit',()=>{
+  const at=new Date('2026-10-31T15:05:00Z');
+  expect(dueDecision(at.toISOString(),at,'2026-10-31T14:05:00Z')).toBe('wait');
+  expect(dueDecision(at.toISOString(),at,'2026-10-31T14:05:00Z',60)).toBe('publish');
+  expect(dueDecision(at.toISOString(),at,'2026-10-31T14:06:00Z',60)).toBe('wait');
+  expect(dueDecision('2026-10-31T14:34:00Z',at,null,60)).toBe('missed');
+ });
  it('refuses to compress a full plan into the evening',()=>{
   expect(()=>availableSlotsFor('2026-10-21',10,[],now)).toThrow('90 минут');
  });

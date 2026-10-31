@@ -13,10 +13,12 @@ import { AppError } from '../errors.js';
 import { editableDayPosts, assertDayResolved, writeDayPlan } from './plan-write.js';
 const candidate=z.object({evidenceId:z.string().uuid(),hypothesis:z.enum(['transition','accounting']),text:z.string().min(1).max(500),alternative:z.string().min(1).max(500),category:z.enum(['teaching','life','founder','product']),topic:z.string().max(200),reason:z.string().max(1500),sourceUrls:z.array(z.string().url()).max(10),trendId:z.string().uuid().nullable(),verified:z.boolean(),concerns:z.array(z.string()).max(10)});
 const output=z.object({posts:z.array(candidate).min(1).max(10)});
-export async function prepareDay(day=tomorrow(),options:{regenerate?:boolean;manual?:boolean}={}) {
+export async function prepareDay(day=tomorrow(),options:{regenerate?:boolean;manual?:boolean;minIntervalMinutes?:60|90}={}) {
  const date=DateTime.fromISO(day,{zone:ZONE});
  if(!/^\d{4}-\d{2}-\d{2}$/.test(day)||!date.isValid||date.toISODate()!==day)throw new AppError(400,'Некорректная дата');
  if(day<DateTime.now().setZone(ZONE).toISODate()!)throw new AppError(400,'Выберите сегодняшний или будущий день');
+ const minIntervalMinutes=options.minIntervalMinutes??90;
+ if(minIntervalMinutes===60&&(!options.manual||day!==DateTime.now().setZone(ZONE).toISODate()))throw new AppError(400,'Часовой интервал доступен только при ручной подготовке сегодняшнего плана');
  const s=await settings();
  if(!options.manual&&!growthDay(date.weekday,s.weeklyCount??DAYS_PER_WEEK)){
   await rows(sql`INSERT INTO daily_plans(day,status,count,slots) VALUES(${day}::date,'ready',0,'[]') ON CONFLICT(day) DO NOTHING`);
@@ -24,7 +26,7 @@ export async function prepareDay(day=tomorrow(),options:{regenerate?:boolean;man
  }
  const arm=null,count=s.dailyCount??POSTS_PER_DAY,ranked:number[]=[];
  const planOutput=z.object({posts:z.array(candidate).length(count)});
- const slots=availableSlotsFor(day,count,[],new Date(),ranked);
+ const slots=availableSlotsFor(day,count,[],new Date(),ranked,minIntervalMinutes);
  const claimed=await one(sql`INSERT INTO daily_plans(day,status,count,slots,experiment_arm) VALUES(${day}::date,'generating',${count},${JSON.stringify(slots)}::jsonb,${arm}) ON CONFLICT(day) DO UPDATE SET status='generating',count=EXCLUDED.count,slots=EXCLUDED.slots,experiment_arm=EXCLUDED.experiment_arm,attempts=daily_plans.attempts+1,updated_at=now() WHERE daily_plans.status='failed' OR (daily_plans.status='ready' AND (${!!options.regenerate} OR (${!!options.manual} AND daily_plans.count=0))) RETURNING *`);
  if(!claimed)return {day,existing:true};
  try {
@@ -87,7 +89,7 @@ export async function prepareDay(day=tomorrow(),options:{regenerate?:boolean;man
     validationErrors=[...new Set([...validationErrors,e.message.slice(0,1500)])].slice(-2);result=undefined;
    }
   }
-  await writeDayPlan(day,result!.posts,trends,arm,replacing,!!options.regenerate,ranked);
+  await writeDayPlan(day,result!.posts,trends,arm,replacing,!!options.regenerate,ranked,minIntervalMinutes);
   await heartbeat('generation');await event('generation','success',`План на ${day} подготовлен`,{day,count,replaced:replacing.length});return {day,count};
  }catch(e){await rows(sql`UPDATE daily_plans SET status='failed',updated_at=now() WHERE day=${day}::date`);throw e;}
 }

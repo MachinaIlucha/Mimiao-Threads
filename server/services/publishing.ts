@@ -78,7 +78,8 @@ export async function publishDue() {
   if(await one(sql`SELECT id FROM posts WHERE status='publishing' LIMIT 1`))return;
   const post=await one<Post>(sql`SELECT * FROM posts WHERE status='scheduled' AND scheduled_at<=now() ORDER BY scheduled_at LIMIT 1`);if(!post)return;
   const previous=await one(sql`SELECT published_at FROM posts WHERE status='published' AND root_id IS NULL ORDER BY published_at DESC LIMIT 1`);
-  const decision=dueDecision(post.scheduled_at!,new Date(),previous?.published_at||null);
+  const plan=await one(sql`SELECT d.min_interval_minutes FROM daily_plans d JOIN posts p ON p.plan_day=d.day WHERE p.id=${post.id}::uuid AND d.day=(p.scheduled_at AT TIME ZONE 'Europe/Kyiv')::date`);
+  const decision=dueDecision(post.scheduled_at!,new Date(),previous?.published_at||null,plan?.min_interval_minutes===60?60:90);
   if(decision==='missed'){await rows(sql`UPDATE posts SET status='missed',error='Опоздание больше 30 минут. Пост не опубликован пачкой после простоя.' WHERE id=${post.id}::uuid AND status='scheduled'`);await event('publish','warning','Пропущено время публикации',{postId:post.id});return;}
   if(decision==='wait')return;
   const s=await settings();if(s.paused)return;
