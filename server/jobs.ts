@@ -4,7 +4,7 @@ import { DateTime } from 'luxon';
 import { AppError } from './errors.js';
 import { today,tomorrow,ZONE } from './domain/schedule.js';
 import { config } from './config.js';
-export const jobNames=['research','prepare','publish','reconcile','metrics','replies','refresh','history','review','optimize','evergreen','browser-check'] as const;
+export const jobNames=['research','prepare','publish','reconcile','metrics','replies','refresh','history','review','optimize','evergreen','browser-check','quota'] as const;
 export type JobName=typeof jobNames[number];
 export const boss=new PgBoss({connectionString:config.databaseUrl,application_name:'threads-studio'});
 boss.on('error',()=>{console.error('Job queue error; check database connectivity.');});

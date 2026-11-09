@@ -6,7 +6,7 @@ Single owner, single Threads account. React/Vite frontend, Fastify API, PostgreS
 
 The browser is authenticated by a random HttpOnly session cookie; only its SHA-256 digest is stored. Every mutation requires an allowed Origin and session CSRF token. The owner password is scrypt-hashed. Threads credentials are encrypted with AES-256-GCM; DeepSeek credentials stay in the process environment. HTTP errors deliberately omit provider bodies and secret URLs. Session lifetime is seven days.
 
-Public sources and ideas are untrusted model input, never executable instructions. Model output is validated with Zod, then editorial checks. Only known source URLs may be retained by daily generation. Factual self-assessment is a useful filter, not proof. Owner review, conservative knowledge and reversible editing remain necessary.
+Public sources and ideas are untrusted model input, never executable instructions. Model output is validated with Zod, then editorial checks. Only known source URLs may be retained by daily generation. Factual self-assessment is a useful filter, not proof. Since the owner's decision of 2026-11-09, owner review is optional: generated posts publish by default, and the owner edits or cancels them before their time. Conservative knowledge and reversible editing remain necessary.
 
 Generation requests include the JSON Schema derived from the same Zod validator after the voice instructions. Machine enum values remain untranslated, and empty arrays remain arrays. Responses are still validated without coercion; failed checks record issue paths/codes rather than raw provider output.
 
@@ -25,9 +25,10 @@ The default transport is Meta's official API. An optional [browser transport](br
 5. Provider writes are never automatically retried. Ambiguous final-send results become `unknown`. Reconciliation only reads provider state and marks a unique verified result published; it never sends a replacement. Unknown records cannot be placed back into the queue through ordinary editing.
 6. Check global pause immediately before the final network call. `LIVE_PUBLISHING` is a second server-level gate. No system can retract a request already accepted by Meta when pause is clicked.
 7. A missing/failed attachment blocks the complete post. Text-only fallback is prohibited. Changed-topic posts with photos require owner review.
-8. Posts >30minutes late become missed; restart cannot produce a catch-up burst. Actual root-publication time enforces spacing even after delays.
+8. Posts >30minutes late become missed; restart cannot produce a catch-up burst. Actual root-publication time enforces a fixed 10-minute minimum gap even after delays; the planned spacing comes from the schedule itself.
 9. Comment replies require an explicit authenticated send endpoint. The worker may discover, classify and draft, but never call send. `sending` is claimed atomically; uncertain replies remain locked. The current implementation conservatively marks even some pre-publish reply failures unknown rather than risking a duplicate.
 10. A crash after accepting a provider response but before committing local state remains recoverable by provider reads. Exact outcome may stay unresolved when Meta no longer exposes sufficient evidence; the interface must say so.
+11. Daily quota: the hourly `quota` job (minute 5, Kyiv, plus once at worker start) keeps 8 root posts per Kyiv day. Delivered = published, publishing, unknown, or scheduled at most 30 minutes ago. It re-queues today's missed/stale posts, generated drafts and blocked posts with fewer than two failed attempts that pass the publish checks, then generates the rest without requiring evidence. It holds locks 7319403 then 7319402 and recounts before every write. Times use the regular grid first, compressing from 90 down to 10 minutes before 23:59. It never touches unknown/publishing, manual drafts or cancelled posts. It never throws on provider failures; shortfalls become `quota` warnings and the next hourly run retries.
 
 ## Measurement invariants
 

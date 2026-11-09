@@ -33,7 +33,7 @@ export async function savePost(raw:unknown,id?:string) {
    if(!source)throw new AppError(400,'Источник не найден');
    hypothesis=source.hypothesis;
    if(data.status==='scheduled'&&(!source.confirmed||(source.kind==='customer'&&!source.permission)))throw new AppError(409,'Сначала подтвердите источник и разрешение на клиентскую историю');
-  }else if(old?.generated&&data.status==='scheduled')throw new AppError(409,'Для сгенерированного поста нужен подтверждённый источник');
+  }
   if(data.status==='scheduled'){
    const conflict=await tx(sql`SELECT id FROM posts WHERE status IN ('scheduled','publishing') AND (${id||null}::uuid IS NULL OR id<>${id||null}::uuid) AND abs(extract(epoch FROM scheduled_at-${data.scheduled_at}::timestamptz))<60 LIMIT 1`);
    if(conflict.length)throw new AppError(409,'Это время занято другой публикацией. Выберите время хотя бы на минуту позже.');

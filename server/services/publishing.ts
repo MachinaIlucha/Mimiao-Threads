@@ -6,7 +6,7 @@ import { mediaSignature } from '../security.js';
 import { ProviderError, AppError, safeMessage } from '../errors.js';
 import { threads, paged, mediaFields, connection } from '../providers/threads.js';
 import { settings, event } from './state.js';
-import { dueDecision } from '../domain/schedule.js';
+import { dueDecision, MIN_PUBLISH_GAP_MINUTES } from '../domain/schedule.js';
 import { checkText } from '../domain/editorial.js';
 import type { Post } from '../../shared/types.js';
 import { publishInBrowser,reconcileBrowserBatch,browserPublishError } from '../browser/publisher.js';
@@ -78,14 +78,13 @@ export async function publishDue() {
   if(await one(sql`SELECT id FROM posts WHERE status='publishing' LIMIT 1`))return;
   const post=await one<Post>(sql`SELECT * FROM posts WHERE status='scheduled' AND scheduled_at<=now() ORDER BY scheduled_at LIMIT 1`);if(!post)return;
   const previous=await one(sql`SELECT published_at FROM posts WHERE status='published' AND root_id IS NULL ORDER BY published_at DESC LIMIT 1`);
-  const plan=await one(sql`SELECT d.min_interval_minutes FROM daily_plans d JOIN posts p ON p.plan_day=d.day WHERE p.id=${post.id}::uuid AND d.day=(p.scheduled_at AT TIME ZONE 'Europe/Kyiv')::date`);
-  const decision=dueDecision(post.scheduled_at!,new Date(),previous?.published_at||null,plan?.min_interval_minutes===60?60:90);
+  const decision=dueDecision(post.scheduled_at!,new Date(),previous?.published_at||null,MIN_PUBLISH_GAP_MINUTES);
   if(decision==='missed'){await rows(sql`UPDATE posts SET status='missed',error='Опоздание больше 30 минут. Пост не опубликован пачкой после простоя.' WHERE id=${post.id}::uuid AND status='scheduled'`);await event('publish','warning','Пропущено время публикации',{postId:post.id});return;}
   if(decision==='wait')return;
   const s=await settings();if(s.paused)return;
   const errors=checkText(post.text,s);
-  if(post.generated||post.evidence_id){
-   const source=post.evidence_id?await one(sql`SELECT confirmed,permission,kind FROM growth_sources WHERE id=${post.evidence_id}::uuid`):null;
+  if(post.evidence_id){
+   const source=await one(sql`SELECT confirmed,permission,kind FROM growth_sources WHERE id=${post.evidence_id}::uuid`);
    if(!source||!source.confirmed||(source.kind==='customer'&&!source.permission))errors.push('Источник не подтверждён или разрешение отозвано');
   }
   if(post.expires_at&&new Date(post.expires_at)<new Date())errors.push('Тема устарела');

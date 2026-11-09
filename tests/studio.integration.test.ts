@@ -74,6 +74,7 @@ describe('authenticated API and editor',()=>{
  it('still rejects scheduling in the past',async()=>{
   await expect(savePost({text:texts[0],status:'scheduled',scheduled_at:'2000-10-20T03:15:00+03:00'})).rejects.toMatchObject({statusCode:400,message:'Выберите время в будущем'});
  });
+ it('lets the owner schedule a generated post that has no evidence record',async()=>{const p=(await one(sql`INSERT INTO posts(text,status,generated,scheduled_at) VALUES(${texts[2]},'draft',true,'2099-10-20T09:00:00+03:00') RETURNING *`))!;const saved=await savePost({text:texts[2],status:'scheduled',scheduled_at:'2099-10-20T09:00:00+03:00',revision:p.revision},p.id);expect(saved.status).toBe('scheduled');});
 });
 describe('evidence-led generation',()=>{
  async function source(permission=true,kind='founder'){return (await one(sql`INSERT INTO growth_sources(title,text,kind,hypothesis,confirmed,permission) VALUES('Перший запуск','Допомагаю почати з однієї групи',${kind},'transition',true,${permission}) RETURNING *`))!;}
@@ -119,6 +120,7 @@ describe('publication safety',()=>{
  it('pauses between container creation and final send',async()=>{await due();vi.mocked(threads).mockImplementation(async endpoint=>{if(endpoint==='me/threads'){await rows(sql`UPDATE settings SET value=jsonb_set(value,'{paused}','true')`);return{id:'container'};}return{status:'FINISHED'};});await publishDue();expect(vi.mocked(threads).mock.calls.some(c=>c[0]==='me/threads_publish')).toBe(false);});
  it('keeps ambiguous results unknown and reconciles without resending',async()=>{const post=await due();vi.mocked(threads).mockImplementation(async endpoint=>{if(endpoint==='me/threads_publish')throw new ProviderError(0,'publish',true);return endpoint==='me/threads'?{id:'container'}:{status:'FINISHED'};});await publishDue();expect((await one(sql`SELECT status FROM posts`))!.status).toBe('unknown');await publishDue();expect(vi.mocked(threads).mock.calls.filter(c=>c[0]==='me/threads_publish')).toHaveLength(1);vi.mocked(threads).mockImplementation(async endpoint=>endpoint==='container'?{status:'PUBLISHED'}:{permalink:'https://www.threads.com/test'});vi.mocked(paged).mockResolvedValue([{id:'found-id',text:post!.text,is_reply:false}]);await reconcile();expect((await one(sql`SELECT status FROM posts`))!.status).toBe('published');});
  it('cannot edit a post once publication is claimed',async()=>{const p=await due();await rows(sql`UPDATE posts SET status='publishing'`);await expect(savePost({text:texts[1],revision:p!.revision},p!.id)).rejects.toMatchObject({statusCode:409});});
+ it('publishes a generated post without an evidence record',async()=>{const post=await due();await rows(sql`UPDATE posts SET generated=true WHERE id=${post!.id}::uuid`);vi.mocked(threads).mockImplementation(async endpoint=>endpoint==='me/threads'?{id:'container'}:endpoint==='container'?{status:'FINISHED'}:endpoint==='me/threads_publish'?{id:'published-id'}:{permalink:'https://www.threads.com/test'});await publishDue();expect((await one(sql`SELECT status FROM posts WHERE id=${post!.id}::uuid`))!.status).toBe('published');});
 });
 describe('metrics and replies',()=>{
  it('limits automatic reply preparation to five drafts per Kyiv day across polls',async()=>{
@@ -136,17 +138,12 @@ describe('metrics and replies',()=>{
 });
 describe('browser publishing transport',()=>{
  it.each([
-  {interval:60,offset:0,linked:true,previousMinutes:61,sends:true},
-  {interval:90,offset:0,linked:true,previousMinutes:61,sends:false},
-  {interval:60,offset:0,linked:false,previousMinutes:61,sends:false},
-  {interval:60,offset:-1,linked:true,previousMinutes:61,sends:false},
-  {interval:60,offset:0,linked:true,previousMinutes:59,sends:false},
- ])('uses hourly spacing only for the matching plan: %j',async({interval,offset,linked,previousMinutes,sends})=>{
+  {previousMinutes:11,sends:true},
+  {previousMinutes:9,sends:false},
+ ])('keeps a fixed ten-minute gap after the previous root publication: %j',async({previousMinutes,sends})=>{
   config.publishingMode='browser';
-  const plan=(await one(sql`INSERT INTO daily_plans(day,status,count,slots,min_interval_minutes) VALUES((now() AT TIME ZONE 'Europe/Kyiv')::date+${offset}::integer,'ready',8,'[]',${interval}) RETURNING day`))!;
   await rows(sql`INSERT INTO posts(text,status,published_at) VALUES('Previous post','published',now()-${previousMinutes}::integer*interval '1 minute')`);
   const p=await due();
-  if(linked)await rows(sql`UPDATE posts SET plan_day=${plan.day}::date WHERE id=${p!.id}::uuid`);
   vi.mocked(publishInBrowser).mockImplementation(async(post,beforeSend)=>{
    await beforeSend([],new Date().toISOString());
    return {url:'https://www.threads.com/@mimiao.crm/post/compact-test',timestamp:new Date().toISOString(),text:post.text,images:0};

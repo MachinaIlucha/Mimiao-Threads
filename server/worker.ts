@@ -14,9 +14,10 @@ import { event,heartbeat } from './services/state.js';
 import { safeMessage } from './errors.js';
 import { tomorrow } from './domain/schedule.js';
 import { checkBrowser,closeBrowser } from './browser/session.js';
+import { ensureDailyQuota } from './services/quota.js';
 validateConfig();await migrate();await startQueue();
-const handlers={research,prepare:()=>prepareDay(),publish:publishDue,reconcile,metrics:collectMetrics,replies:collectReplies,refresh:refreshToken,history:async()=>{await importHistory();await collectMetrics();},review:weeklyReview,optimize,evergreen:replaceExpired,'browser-check':checkBrowser};
-const schedules={research:'0 18 * * *',prepare:'0 19 * * *',publish:'* * * * *',reconcile:'*/5 * * * *',metrics:'*/15 * * * *',replies:'*/15 * * * *',refresh:'0 7 * * *',history:'0 6 * * *',review:'0 10 * * 1',optimize:'30 17 * * *',evergreen:'*/10 * * * *'};
+const handlers={research,prepare:()=>prepareDay(),publish:publishDue,reconcile,metrics:collectMetrics,replies:collectReplies,refresh:refreshToken,history:async()=>{await importHistory();await collectMetrics();},review:weeklyReview,optimize,evergreen:replaceExpired,'browser-check':checkBrowser,quota:()=>ensureDailyQuota()};
+const schedules={research:'0 18 * * *',prepare:'0 19 * * *',publish:'* * * * *',reconcile:'*/5 * * * *',metrics:'*/15 * * * *',replies:'*/15 * * * *',refresh:'0 7 * * *',history:'0 6 * * *',review:'0 10 * * 1',optimize:'30 17 * * *',evergreen:'*/10 * * * *',quota:'5 * * * *'};
 for(const name of jobNames){await boss.work(name,async jobs=>{for(const job of jobs){
  let request:PrepareRequest|undefined;
  try{
@@ -38,7 +39,7 @@ async function maintenance(){
  if(config.deepseekKey&&DateTime.now().setZone('Europe/Kyiv').hour>=19){const plan=await one(sql`SELECT status,attempts,updated_at FROM daily_plans WHERE day=${tomorrow()}::date`);if(!plan||plan.status==='failed'&&plan.attempts<3&&Date.now()-Date.parse(plan.updated_at)>1800000)await boss.send('prepare',{}, {singletonKey:'prepare'});}
  await rows(sql`UPDATE replies SET state='unknown',error='Рабочий процесс был прерван во время отправки' WHERE state='sending' AND sending_at<now()-interval '10 minutes'`);
 }
-await maintenance();const timer=setInterval(()=>void maintenance().catch(()=>console.error('Worker maintenance failed')),30000);
+await maintenance();await boss.send('quota',{}, {singletonKey:'quota'});const timer=setInterval(()=>void maintenance().catch(()=>console.error('Worker maintenance failed')),30000);
 if(config.publishingMode==='browser')await checkBrowser();
 console.log('Threads Studio worker ready. Timezone: Europe/Kyiv.');
 for(const signal of ['SIGINT','SIGTERM'])process.on(signal,async()=>{clearInterval(timer);await boss.stop();await closeBrowser();await pool.end();process.exit(0);});
