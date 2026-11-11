@@ -41,3 +41,7 @@
 - День 30: проверить созревшие trial-когорты, оплаты и время поддержки. Дни 31–90: расширять только темы и каналы с подтверждённым коммерческим движением.
 
 Проверять собственные публикации через 24/72 часа и 7 дней; не смешивать текущие накопленные просмотры браузера с когортами API. Ответы автора и существующих клиентов не равны новым покупателям. Рекламного бюджета в первый месяц нет.
+
+## 2026-11-11: reach format switch
+
+All eight daily posts moved to the reach format (see `docs/client-voice.md`, version `reach-stories-2026-11-11`). Compare median 24h views per category and tagged registrations for the seven days before and after this date. The commercial goal is unchanged: paying schools, not views.

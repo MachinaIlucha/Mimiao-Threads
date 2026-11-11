@@ -62,10 +62,24 @@ it('changes confirmed source after editorial rejection and supplies product know
   expect(writeDayPlan).toHaveBeenCalledWith('2026-11-02', [candidate(second)], [], null, [], false, [],90);
 });
 
-it('never saves a rejected plan or silently replaces missing evidence with filler', async () => {
+it('prepares a sourceless post when there is no confirmed evidence', async () => {
   vi.mocked(rows).mockResolvedValue([]);
-  await expect(prepareDay('2026-11-02')).rejects.toMatchObject({ code: 'EVIDENCE_REQUIRED' });
-  expect(generate).not.toHaveBeenCalled(); expect(writeDayPlan).not.toHaveBeenCalled();
+  vi.mocked(generate).mockImplementation(async kind =>
+    (kind === 'plan-review' ? { blockingIssues: [], suggestions: [] } : { posts: [{ ...candidate(first), evidenceId: null, hypothesis: null, sourceUrls: [] }] }) as any);
+  await expect(prepareDay('2026-11-02')).resolves.toMatchObject({ count: 1 });
+  const writers = vi.mocked(generate).mock.calls.filter(([kind]) => kind === 'daily-plan');
+  expect(writers).toHaveLength(1);
+  expect((writers[0][2] as any).evidence).toEqual([]);
+  expect(writeDayPlan).toHaveBeenCalledOnce();
+  expect(vi.mocked(writeDayPlan).mock.calls[0][1][0]).toMatchObject({ evidenceId: null, hypothesis: null });
+});
+
+it('rejects a sourceless post that still claims a hypothesis', async () => {
+  vi.mocked(generate).mockImplementation(async kind =>
+    (kind === 'plan-review' ? { blockingIssues: [], suggestions: [] } : { posts: [{ ...candidate(first), evidenceId: null }] }) as any);
+  await expect(prepareDay('2026-11-02')).rejects.toMatchObject({ code: 'GENERATION_INVALID' });
+  expect(writeDayPlan).not.toHaveBeenCalled();
+  expect(vi.mocked(generate).mock.calls.filter(([kind]) => kind === 'plan-review')).toHaveLength(0);
 });
 
 it('retains the editorial gate when all attempts are rejected', async () => {
@@ -144,6 +158,19 @@ it('rewrites only the posts the editor rejected and keeps the approved ones', as
   expect(saved).toHaveLength(3);
   expect(saved).toContain(lines[0]); expect(saved).toContain(lines[2]);
   expect(saved).not.toContain(lines[1]);
+});
+
+it('asks for the daily format mix and the remaining formats on retry', async () => {
+  const run = setupPlan(3, call => call === 1 ? [{ postIndex: 1, issue: 'Same takeaway as history' }] : []);
+  await prepareDay('2026-11-02');
+  expect(run.writers()[0].instruction).toContain('Formats still needed for this day: teaching=2, life=0, founder=1, product=0.');
+  expect(run.writers()[1].instruction).toContain('Formats still needed for this day: teaching=2, life=0, founder=0, product=0.');
+});
+
+it('places stories in the latest slots', async () => {
+  setupPlan(3, () => [], (k, post) => k === 0 ? { ...post, category: 'teaching' } : post);
+  await prepareDay('2026-11-02');
+  expect(vi.mocked(writeDayPlan).mock.calls[0][1].map(p => p.text)).toEqual([lines[1], lines[2], lines[0]]);
 });
 
 it('holds back a post with concerns without losing the rest', async () => {

@@ -5,7 +5,7 @@ import { AppError } from '../errors.js';
 
 type Query=<R=Record<string,any>>(query:SQL)=>Promise<R[]>;
 type Post=Record<string,any>;
-type Candidate={evidenceId:string;hypothesis:string;text:string;alternative:string;category:string;sourceUrls:string[];topic:string;reason:string;trendId:string|null};
+type Candidate={evidenceId:string|null;hypothesis:string|null;text:string;alternative:string;category:string;sourceUrls:string[];topic:string;reason:string;trendId:string|null};
 export async function editableDayPosts(query:Query,day:string,lock=false):Promise<Post[]> {
  return query(sql`SELECT * FROM posts WHERE root_id IS NULL AND status IN ('draft','scheduled','blocked','missed') AND COALESCE((scheduled_at AT TIME ZONE 'Europe/Kyiv')::date,plan_day)=${day}::date ORDER BY id ${lock?sql`FOR UPDATE`:sql``}`);
 }
@@ -37,8 +37,10 @@ export async function writeDayPlan(day:string,posts:Candidate[],trends:Post[],ar
   const [{next}]=await tx(sql`SELECT COALESCE(MAX(slot),-1)+1 AS next FROM posts WHERE plan_day=${day}::date`);
   for(let i=0;i<posts.length;i++){
    const p=posts[i],trend=trends.find(t=>t.id===p.trendId);
-   const [source]=await tx(sql`SELECT * FROM growth_sources WHERE id=${p.evidenceId}::uuid FOR SHARE`);
-   if(!source?.confirmed||(source.kind==='customer'&&!source.permission)||source.hypothesis!==p.hypothesis)throw new AppError(409,'Источник изменился во время генерации. Проверьте его снова.');
+   if(p.evidenceId){
+    const [source]=await tx(sql`SELECT * FROM growth_sources WHERE id=${p.evidenceId}::uuid FOR SHARE`);
+    if(!source?.confirmed||(source.kind==='customer'&&!source.permission)||source.hypothesis!==p.hypothesis)throw new AppError(409,'Источник изменился во время генерации. Проверьте его снова.');
+   }
    await tx(sql`INSERT INTO posts(text,alternative,category,status,scheduled_at,sources,topic,reason,expires_at,generated,plan_day,slot,experiment_arm,evidence_id,hypothesis) VALUES(${p.text},${p.alternative},${p.category},'draft',${slots[i]},${JSON.stringify(p.sourceUrls)}::jsonb,${p.topic},${p.reason},${trend?.expires_at||null},true,${day}::date,${Number(next)+i},${arm},${p.evidenceId}::uuid,${p.hypothesis})`);
   }
   await tx(sql`UPDATE daily_plans SET status='ready',count=${posts.length},slots=${JSON.stringify(slots)}::jsonb,min_interval_minutes=${minIntervalMinutes},updated_at=now() WHERE day=${day}::date`);
